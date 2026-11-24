@@ -1,7 +1,6 @@
 import {
   ICONS,
   LINK_ICON_META,
-  CATEGORY_META,
   BUDGET_CATEGORY_META,
   REAL_CARD_BACKDROPS,
   REAL_THEME_BACKDROPS,
@@ -10,8 +9,23 @@ import {
   esc,
   getStopMapUrl,
   getStopLocationLabel,
+  getCategoryMeta,
   inferBudgetCategory,
   getItemFinalCost,
+  formatTimeRange,
+  formatDurationLabel,
+  formatMinutesTo12h,
+  formatMiles,
+  ensureEventTimeFields,
+  markRippledEvents,
+  getLegTravelInfo,
+  prefetchRoutesForDay,
+  prefetchRoutesForTrip,
+  getDayScheduleConflicts,
+  getDayTravelTotals,
+  getTripTravelTotals,
+  rippleAdjustDay,
+  autoFitFlexibleDay,
   showToast,
   openModal,
   closeModal,
@@ -22,7 +36,8 @@ import {
   getReadinessStats,
   renderHero,
   renderForecastStrip,
-  renderCarousel
+  renderCarousel,
+  setActiveCarouselIndex
 } from './trip-planner.js';
 
 /**
@@ -34,6 +49,8 @@ export const detailHooks = {
   openEventModal: () => {},
   deleteEvent: () => {},
   moveEvent: () => {},
+  openCopyEventModal: () => {},
+  openTravelOverrideModal: () => {},
   openChecklistCategoryModal: () => {},
   openBudgetModal: () => {},
   openLinkModal: () => {}
@@ -44,21 +61,849 @@ export function registerDetailHooks(overrides = {}) {
 }
 
 /**
- * Render Detailed Editable Itinerary Timeline (Hover-Reveal Icons & Mobile-Safe Wrapping)
+ * ============================================================================
+ * SMART SCHEDULE ACTIONS (Complete, Lock Time, Duplicate, Auto-Fit, Drag-Drop)
+ * ============================================================================
+ */
+let droppedClearTimer = null;
+let completedClearTimer = null;
+
+function markDroppedEvent(eventId) {
+  appStore.recentlyDroppedId = eventId;
+  clearTimeout(droppedClearTimer);
+  droppedClearTimer = setTimeout(() => {
+    appStore.recentlyDroppedId = null;
+  }, 550);
+}
+
+function markCompletedEvent(eventId) {
+  appStore.recentlyCompletedId = eventId;
+  clearTimeout(completedClearTimer);
+  completedClearTimer = setTimeout(() => {
+    appStore.recentlyCompletedId = null;
+  }, 500);
+}
+
+export function toggleStopCompleted(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  const ev = day?.events.find((e) => e.id === eventId);
+  if (!ev) return;
+  ev.completed = !ev.completed;
+  if (ev.completed) markCompletedEvent(ev.id);
+  renderItinerary();
+  scheduleCloudSave();
+  showToast(ev.completed ? 'Activity marked completed' : 'Activity marked active');
+}
+
+export function toggleStopFixedTime(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  const ev = day?.events.find((e) => e.id === eventId);
+  if (!ev) return;
+  ev.fixedTime = !ev.fixedTime;
+  renderItinerary();
+  scheduleCloudSave();
+  showToast(
+    ev.fixedTime
+      ? `Locked at ${ev.time} (won't auto-shift)`
+      : 'Time unlocked (flexible for auto-adjust)'
+  );
+}
+
+export function duplicateEvent(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const idx = day.events.findIndex((e) => e.id === eventId);
+  if (idx < 0) return;
+
+  const src = day.events[idx];
+  ensureEventTimeFields(src);
+  const nextStart = Math.min(23 * 60 + 30, src.startMin + src.durationMin);
+  const clone = {
+    ...src,
+    id: uid('ev'),
+    startMin: nextStart,
+    time: formatTimeRange(nextStart, src.durationMin),
+    fixedTime: false,
+    completed: false,
+    travelFromPrevMin: null,
+    travelFromPrevMiles: null
+  };
+
+  day.events.splice(idx + 1, 0, clone);
+  markDroppedEvent(clone.id);
+
+  if (appStore.autoAdjustTimes) {
+    const rippled = rippleAdjustDay(day, idx + 2);
+    markRippledEvents([clone.id, ...rippled]);
+  }
+
+  renderCarousel();
+  renderItinerary();
+  prefetchRoutesForDay(day);
+  scheduleCloudSave();
+  showToast('Activity duplicated');
+}
+
+export function runAutoFitForDay(dayId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const changed = autoFitFlexibleDay(day);
+  if (changed.length > 0) {
+    markRippledEvents(changed);
+    renderItinerary();
+    scheduleCloudSave();
+    showToast(`Auto-adjusted ${changed.length} flexible ${changed.length === 1 ? 'activity' : 'activities'}`);
+  } else {
+    showToast('Fixed-time stops cannot be moved — adjust duration or unlock a time', 'error');
+  }
+}
+
+/**
+ * Commit a Drag-and-Drop Operation (Reorder, Time Slot Snap, or Cross-Day Move)
+ */
+function commitStopDrop({ sourceDayId, eventId, target }) {
+  if (!target) return;
+  const days = appStore.state.days;
+  const sourceDay = days.find((d) => d.id === sourceDayId);
+  if (!sourceDay) return;
+  const srcIdx = sourceDay.events.findIndex((e) => e.id === eventId);
+  if (srcIdx < 0) return;
+
+  const targetDay = days.find((d) => d.id === target.dayId);
+  if (!targetDay) return;
+
+  const sameDay = sourceDay.id === targetDay.id;
+  const [moved] = sourceDay.events.splice(srcIdx, 1);
+  ensureEventTimeFields(moved);
+
+  // Clear stale manual transit overrides if neighbors changed
+  moved.travelFromPrevMin = null;
+  moved.travelFromPrevMiles = null;
+
+  let rippledIds = [];
+  let toastMessage = '';
+
+  if (target.kind === 'slot') {
+    // Dropped directly onto a specific hourly Time Slot
+    const slotMin = Math.max(0, Math.min(23 * 60 + 30, target.slotMin));
+    moved.startMin = slotMin;
+    moved.time = formatTimeRange(moved.startMin, moved.durationMin);
+
+    // Find chronological insertion index inside targetDay
+    let insertIdx = targetDay.events.findIndex((e) => {
+      ensureEventTimeFields(e);
+      return e.startMin > slotMin;
+    });
+    if (insertIdx === -1) insertIdx = targetDay.events.length;
+    targetDay.events.splice(insertIdx, 0, moved);
+
+    if (appStore.autoAdjustTimes) {
+      rippledIds = rippleAdjustDay(targetDay, insertIdx + 1);
+    }
+    markRippledEvents([moved.id, ...rippledIds]);
+    toastMessage = `Moved to ${formatMinutesTo12h(slotMin)}${!sameDay ? ` (${targetDay.shortDay})` : ''}${rippledIds.length ? ` · ${rippledIds.length} shifted` : ''}`;
+  } else if (target.kind === 'card') {
+    // Dropped before/after another activity card
+    let insertIdx = targetDay.events.findIndex((e) => e.id === target.targetEventId);
+    if (insertIdx === -1) {
+      insertIdx = targetDay.events.length;
+    } else if (target.position === 'after') {
+      insertIdx += 1;
+    }
+
+    // Remember original anchor start time if moving to position 0 of a non-empty day
+    const firstBeforeMove = targetDay.events[0] ? targetDay.events[0].startMin : moved.startMin;
+    targetDay.events.splice(insertIdx, 0, moved);
+
+    if (appStore.autoAdjustTimes) {
+      if (!moved.fixedTime) {
+        if (insertIdx === 0) {
+          moved.startMin = sameDay ? Math.min(firstBeforeMove, moved.startMin) : firstBeforeMove;
+          moved.time = formatTimeRange(moved.startMin, moved.durationMin);
+        } else {
+          const prev = targetDay.events[insertIdx - 1];
+          ensureEventTimeFields(prev);
+          const leg = getLegTravelInfo(targetDay, insertIdx);
+          moved.startMin = Math.min(23 * 60 + 30, prev.startMin + prev.durationMin + (leg.minutes || 0));
+          moved.time = formatTimeRange(moved.startMin, moved.durationMin);
+        }
+        rippledIds.push(moved.id);
+      }
+
+      const following = rippleAdjustDay(targetDay, Math.max(1, insertIdx + 1));
+      following.forEach((id) => {
+        if (!rippledIds.includes(id)) rippledIds.push(id);
+      });
+    }
+
+    markRippledEvents(rippledIds);
+    toastMessage = sameDay
+      ? `Reordered${rippledIds.length ? ` · Auto-adjusted ${rippledIds.length} time${rippledIds.length === 1 ? '' : 's'}` : ''}`
+      : `Moved to ${targetDay.shortDay} · ${targetDay.location || targetDay.shortDate}`;
+  } else if (target.kind === 'day') {
+    // Dropped onto Cross-Day Dock chip or empty Day container
+    const insertIdx = targetDay.events.length;
+    targetDay.events.splice(insertIdx, 0, moved);
+
+    if (appStore.autoAdjustTimes && !moved.fixedTime) {
+      if (insertIdx > 0) {
+        const prev = targetDay.events[insertIdx - 1];
+        ensureEventTimeFields(prev);
+        const leg = getLegTravelInfo(targetDay, insertIdx);
+        moved.startMin = Math.min(23 * 60 + 30, prev.startMin + prev.durationMin + (leg.minutes || 0));
+        moved.time = formatTimeRange(moved.startMin, moved.durationMin);
+        rippledIds.push(moved.id);
+      }
+      const following = rippleAdjustDay(targetDay, Math.max(1, insertIdx + 1));
+      following.forEach((id) => {
+        if (!rippledIds.includes(id)) rippledIds.push(id);
+      });
+    }
+
+    markRippledEvents(rippledIds);
+    toastMessage = `Moved to ${targetDay.shortDay} · ${targetDay.location || targetDay.title}`;
+  }
+
+  markDroppedEvent(moved.id);
+
+  // If moved to another day while in Focused Day mode, jump straight to that day so the user sees it land
+  if (!sameDay && !appStore.showAllDays) {
+    const targetDayIdx = days.findIndex((d) => d.id === targetDay.id);
+    if (targetDayIdx >= 0) {
+      setActiveCarouselIndex(targetDayIdx);
+      prefetchRoutesForTrip();
+      scheduleCloudSave();
+      if (toastMessage) showToast(toastMessage);
+      return;
+    }
+  }
+
+  renderCarousel();
+  renderItinerary();
+  prefetchRoutesForTrip();
+  scheduleCloudSave();
+  if (toastMessage) showToast(toastMessage);
+}
+
+/**
+ * Unified Pointer Drag-and-Drop Controller (Desktop Mouse + Mobile Touch)
+ */
+function setupItineraryDragAndDrop(container) {
+  container.querySelectorAll('.stop-drag-handle').forEach((handle) => {
+    handle.addEventListener('pointerdown', (startEvent) => {
+      if (startEvent.button !== 0 && startEvent.pointerType === 'mouse') return;
+
+      const cardWrap = handle.closest('.stop-card-wrap');
+      if (!cardWrap) return;
+
+      const sourceDayId = cardWrap.dataset.dayId;
+      const eventId = cardWrap.dataset.stopId;
+      const sourceDay = appStore.state.days.find((d) => d.id === sourceDayId);
+      const evObj = sourceDay?.events.find((e) => e.id === eventId);
+      if (!evObj) return;
+
+      startEvent.preventDefault();
+
+      const startX = startEvent.clientX;
+      const startY = startEvent.clientY;
+      let isDragging = false;
+      let ghostEl = null;
+      let ghostBadgeEl = null;
+      let activeTarget = null;
+      let scrollRafId = null;
+      let lastClientX = startX;
+      let lastClientY = startY;
+
+      const dockEl = document.getElementById('crossDayDropDock');
+      const dockTargetsEl = document.getElementById('crossDayDropTargets');
+
+      const clearHighlights = () => {
+        document.querySelectorAll('.drop-before, .drop-after').forEach((el) => {
+          el.classList.remove('drop-before', 'drop-after');
+        });
+        document.querySelectorAll('.is-drop-target').forEach((el) => el.classList.remove('is-drop-target'));
+        document.querySelectorAll('.is-day-drop-hover').forEach((el) => el.classList.remove('is-day-drop-hover'));
+        document.querySelectorAll('.is-slot-hover').forEach((el) => el.classList.remove('is-slot-hover'));
+      };
+
+      const renderCrossDayDock = () => {
+        if (!dockEl || !dockTargetsEl || appStore.state.days.length <= 1) return;
+        dockTargetsEl.innerHTML = appStore.state.days.map((d, idx) => {
+          const isCurrent = d.id === sourceDayId;
+          return `
+            <div
+              data-drop-day-id="${esc(d.id)}"
+              class="day-drop-chip px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
+                isCurrent
+                  ? 'bg-white/5 border-white/10 text-white/45'
+                  : 'bg-white/10 border-white/20 text-white/90'
+              }"
+            >
+              <span class="w-1.5 h-1.5 rounded-full ${isCurrent ? 'bg-white/30' : 'bg-sky-300'}"></span>
+              <span>${esc(d.shortDay || `Day ${idx + 1}`)}</span>
+              <span class="text-[10px] opacity-70">${esc(d.location || d.shortDate || '')}</span>
+            </div>
+          `;
+        }).join('');
+        dockEl.classList.remove('hidden');
+      };
+
+      const startDragSession = (e) => {
+        isDragging = true;
+        document.body.classList.add('is-dragging-stop');
+        cardWrap.classList.add('is-dragging-source');
+        renderCrossDayDock();
+
+        const cat = getCategoryMeta(evObj.category);
+        const rect = cardWrap.getBoundingClientRect();
+        const ghostW = Math.min(Math.max(240, rect.width), window.innerWidth - 28);
+
+        ghostEl = document.createElement('div');
+        ghostEl.className = 'drag-ghost px-3.5 py-2.5';
+        ghostEl.style.width = `${ghostW}px`;
+        ghostEl.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <span class="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 ${cat.color}">${ICONS[cat.icon] || ICONS.stop}</span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5">
+                <span class="text-[11px] font-bold text-orange-300">${esc(evObj.time)}</span>
+                ${evObj.fixedTime ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-200 font-semibold">Fixed</span>` : ''}
+              </div>
+              <p class="text-xs font-medium text-white truncate">${esc(evObj.text)}</p>
+            </div>
+          </div>
+          <div data-ghost-hint class="mt-1.5 pt-1.5 border-t border-white/10 text-[10px] font-semibold text-sky-300 truncate">
+            Drag to reorder, drop on a time slot, or drop onto another day
+          </div>
+        `;
+        document.body.appendChild(ghostEl);
+        ghostBadgeEl = ghostEl.querySelector('[data-ghost-hint]');
+        positionGhost(e.clientX, e.clientY);
+
+        const autoScrollLoop = () => {
+          if (!isDragging) return;
+          const edge = 76;
+          if (lastClientY < edge) {
+            window.scrollBy(0, -Math.max(4, (edge - lastClientY) * 0.22));
+          } else if (lastClientY > window.innerHeight - edge) {
+            window.scrollBy(0, Math.max(4, (lastClientY - (window.innerHeight - edge)) * 0.22));
+          }
+          scrollRafId = requestAnimationFrame(autoScrollLoop);
+        };
+        scrollRafId = requestAnimationFrame(autoScrollLoop);
+      };
+
+      const positionGhost = (cx, cy) => {
+        if (!ghostEl) return;
+        const w = ghostEl.offsetWidth || 260;
+        const h = ghostEl.offsetHeight || 68;
+        const clampedX = Math.max(10, Math.min(window.innerWidth - w - 10, cx - w / 2));
+        const clampedY = Math.max(10, Math.min(window.innerHeight - h - 10, cy - h * 0.55));
+        ghostEl.style.left = `${clampedX}px`;
+        ghostEl.style.top = `${clampedY}px`;
+      };
+
+      const hitTestTarget = (cx, cy) => {
+        clearHighlights();
+        activeTarget = null;
+        const el = document.elementFromPoint(cx, cy);
+        if (!el) return;
+
+        // 1. Cross-Day Drop Dock Chip
+        const chip = el.closest('[data-drop-day-id]');
+        if (chip && chip.dataset.dropDayId !== sourceDayId) {
+          chip.classList.add('is-drop-target');
+          const tDay = appStore.state.days.find((d) => d.id === chip.dataset.dropDayId);
+          activeTarget = { kind: 'day', dayId: chip.dataset.dropDayId };
+          if (ghostBadgeEl) ghostBadgeEl.textContent = `Drop to move to ${tDay?.shortDay || 'Day'} · ${tDay?.location || ''}`;
+          return;
+        }
+
+        // 2. Another Stop Card (Reorder Before / After — Same Day or Across Days)
+        const stopEl = el.closest('.stop-card-wrap[data-stop-id]');
+        if (stopEl && stopEl.dataset.stopId !== eventId) {
+          const rect = stopEl.getBoundingClientRect();
+          const position = cy < rect.top + rect.height / 2 ? 'before' : 'after';
+          stopEl.classList.add(position === 'before' ? 'drop-before' : 'drop-after');
+          activeTarget = {
+            kind: 'card',
+            dayId: stopEl.dataset.dayId,
+            targetEventId: stopEl.dataset.stopId,
+            position
+          };
+          if (ghostBadgeEl) {
+            const label = stopEl.dataset.dayId !== sourceDayId ? 'Move to other day & ' : '';
+            ghostBadgeEl.textContent = `${label}Place ${position} stop${appStore.autoAdjustTimes ? ' · Auto-adjust times' : ''}`;
+          }
+          return;
+        }
+
+        // 3. Time Slot Zone (Time Slots Mode)
+        const slotEl = el.closest('.time-slot-zone[data-slot-day][data-slot-min]');
+        if (slotEl) {
+          slotEl.classList.add('is-slot-hover');
+          const slotMin = Number(slotEl.dataset.slotMin);
+          activeTarget = {
+            kind: 'slot',
+            dayId: slotEl.dataset.slotDay,
+            slotMin
+          };
+          if (ghostBadgeEl) {
+            ghostBadgeEl.textContent = `Snap to ${formatMinutesTo12h(slotMin)}${appStore.autoAdjustTimes ? ' · Ripple following flexible stops' : ''}`;
+          }
+          return;
+        }
+
+        // 4. Whole Day Article Drop (All Days view — e.g. empty day or bottom area)
+        const dayArticle = el.closest('.day-article-drop[data-day-drop]');
+        if (dayArticle && dayArticle.dataset.dayDrop !== sourceDayId) {
+          dayArticle.classList.add('is-day-drop-hover');
+          const tDay = appStore.state.days.find((d) => d.id === dayArticle.dataset.dayDrop);
+          activeTarget = { kind: 'day', dayId: dayArticle.dataset.dayDrop };
+          if (ghostBadgeEl) ghostBadgeEl.textContent = `Move to ${tDay?.shortDay || 'Day'} · ${tDay?.location || ''}`;
+          return;
+        }
+
+        if (ghostBadgeEl) {
+          ghostBadgeEl.textContent = 'Drag over another stop, time slot, or day to drop';
+        }
+      };
+
+      const onPointerMove = (e) => {
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
+        const dist = Math.hypot(e.clientX - startX, e.clientY - startY);
+        if (!isDragging && dist > 6) {
+          startDragSession(e);
+        }
+        if (isDragging) {
+          e.preventDefault();
+          positionGhost(e.clientX, e.clientY);
+          hitTestTarget(e.clientX, e.clientY);
+        }
+      };
+
+      const cleanup = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerCancel);
+        if (scrollRafId) cancelAnimationFrame(scrollRafId);
+        clearHighlights();
+        document.body.classList.remove('is-dragging-stop');
+        cardWrap.classList.remove('is-dragging-source');
+        if (ghostEl) {
+          ghostEl.remove();
+          ghostEl = null;
+        }
+        if (dockEl) dockEl.classList.add('hidden');
+      };
+
+      const onPointerUp = () => {
+        const finalTarget = activeTarget;
+        const wasDragging = isDragging;
+        cleanup();
+        if (wasDragging && finalTarget) {
+          commitStopDrop({ sourceDayId, eventId, target: finalTarget });
+        }
+      };
+
+      const onPointerCancel = () => {
+        cleanup();
+      };
+
+      window.addEventListener('pointermove', onPointerMove, { passive: false });
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerCancel);
+    });
+  });
+}
+
+/**
+ * Sync Toolbar Buttons & Whole-Trip Telemetry Bar
+ */
+export function renderScheduleControls() {
+  const modeTimelineBtn = document.getElementById('scheduleModeTimelineBtn');
+  const modeSlotsBtn = document.getElementById('scheduleModeSlotsBtn');
+  const viewSingleBtn = document.getElementById('viewSingleBtn');
+  const viewAllBtn = document.getElementById('viewAllBtn');
+  const autoBtn = document.getElementById('autoAdjustToggleBtn');
+  const autoDot = document.getElementById('autoAdjustDot');
+  const autoLabel = document.getElementById('autoAdjustLabel');
+  const telemetryEl = document.getElementById('tripScheduleTelemetry');
+
+  if (modeTimelineBtn && modeSlotsBtn) {
+    const isTimeline = appStore.scheduleViewMode !== 'slots';
+    modeTimelineBtn.className = isTimeline
+      ? 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-orange-500/80 to-sky-500/80 text-white shadow cursor-pointer'
+      : 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
+    modeSlotsBtn.className = !isTimeline
+      ? 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-orange-500/80 to-sky-500/80 text-white shadow cursor-pointer'
+      : 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
+  }
+
+  if (viewSingleBtn && viewAllBtn) {
+    viewSingleBtn.className = !appStore.showAllDays
+      ? 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-white shadow cursor-pointer'
+      : 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
+    viewAllBtn.className = appStore.showAllDays
+      ? 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-white shadow cursor-pointer'
+      : 'px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
+  }
+
+  if (autoBtn && autoDot && autoLabel) {
+    const on = appStore.autoAdjustTimes;
+    autoBtn.className = on
+      ? 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 backdrop-blur-xl text-sky-200 transition-all cursor-pointer'
+      : 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/8 hover:bg-white/15 border border-white/15 backdrop-blur-xl text-white/65 transition-all cursor-pointer';
+    autoDot.className = on
+      ? 'w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.9)]'
+      : 'w-2 h-2 rounded-full bg-white/30';
+    autoLabel.textContent = on ? 'Auto-Adjust: ON' : 'Auto-Adjust: OFF';
+  }
+
+  if (telemetryEl) {
+    const tripStats = getTripTravelTotals();
+    const completionPct = tripStats.totalCount > 0 ? Math.round((tripStats.completedCount / tripStats.totalCount) * 100) : 0;
+    telemetryEl.innerHTML = `
+      <div class="flex flex-wrap items-center justify-between gap-2.5 text-xs">
+        <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-200 font-semibold tabular-nums">
+            <span class="text-sky-300">${ICONS.route}</span>
+            <span>Trip Travel:</span>
+            <span class="text-white">${tripStats.totalMinutes > 0 ? formatDurationLabel(tripStats.totalMinutes) : '0m'}</span>
+            <span class="text-white/40">·</span>
+            <span class="text-sky-100">${formatMiles(tripStats.totalMiles)}</span>
+          </div>
+
+          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 font-semibold tabular-nums">
+            <span class="text-emerald-300">${ICONS.check}</span>
+            <span>${tripStats.completedCount} / ${tripStats.totalCount} Done</span>
+            <span class="text-[10px] text-emerald-300/80">(${completionPct}%)</span>
+          </div>
+
+          ${tripStats.conflictCount > 0 ? `
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-200 font-semibold tabular-nums">
+              <span class="text-rose-300">${ICONS.alert}</span>
+              <span>${tripStats.conflictCount} Tight Timing ${tripStats.conflictCount === 1 ? 'Warning' : 'Warnings'}</span>
+            </div>
+          ` : `
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.05] border border-white/10 text-white/65 font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <span>No schedule conflicts</span>
+            </div>
+          `}
+        </div>
+
+        <div class="text-[11px] text-white/45 hidden md:flex items-center gap-1.5">
+          <span class="text-white/60">${ICONS.grip}</span>
+          <span>Drag handle to reorder, drop on time slots, or move across days</span>
+        </div>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Helper: Render One Interactive Activity Card (Shared by Timeline & Time Slots Modes)
+ */
+function renderStopCardHtml(day, ev, eIdx, conflictsMap, { showTimelineNode = true } = {}) {
+  ensureEventTimeFields(ev);
+  const cat = getCategoryMeta(ev.category);
+  const mapUrl = getStopMapUrl(ev.location);
+  const conflict = conflictsMap.get(ev.id);
+  const isRippled = appStore.recentlyRippledIds.has(ev.id);
+  const isDropped = appStore.recentlyDroppedId === ev.id;
+  const isJustCompleted = appStore.recentlyCompletedId === ev.id;
+
+  const leg = eIdx > 0 ? getLegTravelInfo(day, eIdx) : null;
+  const showTransitConnector = eIdx > 0 && leg && (leg.source === 'manual' || leg.source === 'auto' || leg.source === 'pending' || (leg.fromLabel && leg.toLabel && leg.source !== 'same'));
+
+  const transitPillHtml = showTransitConnector ? `
+    <div class="mb-2.5 ${showTimelineNode ? 'pl-5 sm:pl-6' : 'pl-1'}">
+      <button
+        type="button"
+        data-action="edit-travel"
+        data-day="${esc(day.id)}"
+        data-event="${esc(ev.id)}"
+        title="Click to edit travel time, distance, or mode (drive/walk)"
+        class="transit-connector-pill inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border cursor-pointer ${
+          conflict
+            ? 'bg-rose-500/15 border-rose-400/40 text-rose-200'
+            : leg.source === 'manual'
+              ? 'bg-orange-500/15 border-orange-400/35 text-orange-200 hover:bg-orange-500/25'
+              : 'bg-sky-500/12 border-sky-400/25 text-sky-200 hover:bg-sky-500/22'
+        }"
+      >
+        <span class="${conflict ? 'text-rose-300' : 'text-sky-300'}">${leg.mode === 'walk' ? ICONS.walk : ICONS.drive}</span>
+        ${leg.source === 'pending'
+          ? `<span class="opacity-80">Calculating route...</span>`
+          : `<span class="font-semibold tabular-nums">${formatDurationLabel(leg.minutes)}</span>
+             ${leg.miles > 0 ? `<span class="opacity-50">·</span><span class="tabular-nums">${formatMiles(leg.miles)}</span>` : ''}
+             <span class="text-[10px] opacity-65">${leg.mode === 'walk' ? 'walk' : 'drive'}${leg.source === 'manual' ? ' · custom' : ''}</span>`
+        }
+      </button>
+    </div>
+  ` : '';
+
+  const conflictBannerHtml = conflict ? `
+    <div class="conflict-banner mt-2.5 rounded-xl bg-rose-500/15 border border-rose-400/45 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-rose-100">
+      <div class="flex items-start gap-2 min-w-0 flex-1">
+        <span class="text-rose-300 shrink-0 mt-0.5">${ICONS.alert}</span>
+        <div class="min-w-0 leading-snug">
+          <strong class="text-rose-200">Not enough time:</strong>
+          Arrives at <span class="font-bold tabular-nums">${formatMinutesTo12h(conflict.earliestArrival)}</span>
+          (<span class="font-bold text-orange-200">+${conflict.overlapMin}m late</span>${conflict.travelMin > 0 ? ` incl. ${formatDurationLabel(conflict.travelMin)} travel` : ''}).
+        </div>
+      </div>
+      <button
+        type="button"
+        data-action="autofit-day"
+        data-day="${esc(day.id)}"
+        class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-orange-500/85 to-sky-500/85 hover:from-orange-400 hover:to-sky-400 text-white text-[10px] font-bold shadow cursor-pointer shrink-0"
+      >
+        ${ICONS.bolt}
+        <span>Auto-Fit</span>
+      </button>
+    </div>
+  ` : '';
+
+  return `
+    ${transitPillHtml}
+    <div
+      class="stop-card-wrap group relative ${showTimelineNode ? 'pl-4 sm:pl-6' : ''} ${isDropped ? 'is-just-dropped' : ''}"
+      data-day-id="${esc(day.id)}"
+      data-stop-id="${esc(ev.id)}"
+    >
+      ${showTimelineNode ? `
+        <span class="absolute -left-[10px] top-4 w-3.5 h-3.5 rounded-full border-2 border-[#16171d] transition-transform duration-200 group-hover:scale-125 ${
+          ev.completed
+            ? 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.75)]'
+            : ev.fixedTime
+              ? 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.75)]'
+              : 'bg-gradient-to-br from-orange-400 to-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)]'
+        }"></span>
+      ` : ''}
+
+      <div class="stop-card-surface rounded-2xl border p-3 sm:p-4 transition-all duration-200 ${
+        ev.completed
+          ? 'border-emerald-400/25 bg-emerald-500/[0.05] opacity-80'
+          : conflict
+            ? 'border-rose-400/40 bg-rose-500/[0.06]'
+            : ev.fixedTime
+              ? 'border-amber-400/25 bg-amber-500/[0.04] hover:bg-amber-500/[0.08] hover:border-amber-300/40'
+              : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20'
+      }">
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+          <div class="flex items-start gap-2 sm:gap-2.5 min-w-0 flex-1">
+            <!-- Dedicated Touch & Mouse Drag Handle -->
+            <button
+              type="button"
+              class="stop-drag-handle mt-1 p-1 -ml-1 rounded-lg text-white/35 hover:text-sky-300 hover:bg-white/10 shrink-0 transition-colors"
+              title="Drag to reorder, snap to a time slot, or move to another day"
+              aria-label="Drag activity"
+            >
+              ${ICONS.grip}
+            </button>
+
+            <!-- Complete Activity Toggle -->
+            <button
+              type="button"
+              data-action="toggle-complete"
+              data-day="${esc(day.id)}"
+              data-event="${esc(ev.id)}"
+              title="${ev.completed ? 'Mark as not completed' : 'Mark activity as completed'}"
+              class="stop-check-btn mt-1 w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all cursor-pointer ${isJustCompleted ? 'is-just-completed' : ''} ${
+                ev.completed
+                  ? 'bg-emerald-400 border-emerald-300 text-slate-950 shadow-[0_0_12px_rgba(52,211,153,0.6)]'
+                  : 'border-white/30 bg-black/30 hover:border-emerald-400 text-transparent hover:text-emerald-300/60'
+              }"
+            >
+              ${ICONS.check}
+            </button>
+
+            <!-- Category Icon Badge -->
+            <span title="${esc(cat.label)}" class="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${cat.color}">
+              ${ICONS[cat.icon] || ICONS.stop}
+            </span>
+
+            <!-- Activity Content -->
+            <div class="min-w-0 flex-1">
+              <!-- Time Badge + Duration + Fixed/Flex Lock + Category Tag -->
+              <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                <button
+                  type="button"
+                  data-action="edit-event"
+                  data-day="${esc(day.id)}"
+                  data-event="${esc(ev.id)}"
+                  title="Edit time & details"
+                  class="time-badge ${isRippled ? 'is-time-rippled' : ''} inline-flex items-center gap-1 px-1.5 py-0.5 -ml-1.5 rounded-lg text-xs font-bold tracking-tight text-orange-300 hover:bg-white/10 transition-colors cursor-pointer tabular-nums"
+                >
+                  <span>${esc(ev.time)}</span>
+                  <span class="text-[10px] font-semibold text-white/50">(${formatDurationLabel(ev.durationMin)})</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-action="toggle-fixed"
+                  data-day="${esc(day.id)}"
+                  data-event="${esc(ev.id)}"
+                  title="${ev.fixedTime ? 'Fixed Time: Will NOT auto-shift when other activities move. Click to unlock.' : 'Flexible Time: Auto-shifts to make room. Click to lock as Fixed Time.'}"
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border transition-all cursor-pointer ${
+                    ev.fixedTime
+                      ? 'bg-amber-500/20 border-amber-400/45 text-amber-200 hover:bg-amber-500/30 shadow-sm shadow-amber-500/10'
+                      : 'bg-white/[0.06] border-white/12 text-white/55 hover:text-white hover:border-white/25'
+                  }"
+                >
+                  ${ev.fixedTime ? ICONS.lock : ICONS.unlock}
+                  <span>${ev.fixedTime ? 'Fixed' : 'Flex'}</span>
+                </button>
+
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cat.color} opacity-85">
+                  ${esc(cat.label)}
+                </span>
+              </div>
+
+              <p class="text-sm leading-relaxed break-words transition-colors ${
+                ev.completed ? 'line-through text-white/45' : 'text-white/90'
+              }">${esc(ev.text)}</p>
+
+              <!-- Location Maps Pill + Optional Add Travel Trigger -->
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                ${mapUrl ? `
+                  <a
+                    href="${esc(mapUrl)}"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Open ${esc(ev.location)} in Google Maps"
+                    class="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-500/15 hover:bg-sky-500/30 border border-sky-400/30 hover:border-sky-300/60 text-sky-200 hover:text-white transition-all duration-200"
+                  >
+                    <span class="text-sky-300 shrink-0">${ICONS.pin}</span>
+                    <span class="truncate">${esc(getStopLocationLabel(ev.location))}</span>
+                    <span class="opacity-65 shrink-0">${ICONS.link}</span>
+                  </a>
+                ` : ''}
+
+                ${eIdx > 0 && !showTransitConnector ? `
+                  <button
+                    type="button"
+                    data-action="edit-travel"
+                    data-day="${esc(day.id)}"
+                    data-event="${esc(ev.id)}"
+                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/[0.05] hover:bg-sky-500/20 border border-white/10 hover:border-sky-400/30 text-white/50 hover:text-sky-200 transition-colors cursor-pointer"
+                  >
+                    ${ICONS.route}
+                    <span>+ Travel</span>
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Inline Action Buttons: Move, Duplicate, Copy to Day, Edit, Delete -->
+          <div class="flex flex-wrap items-center gap-1 self-end sm:self-start shrink-0 transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+            <button type="button" data-action="move-event" data-dir="-1" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" ${eIdx === 0 ? 'disabled' : ''} title="Move Up" class="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 disabled:opacity-25 cursor-pointer">${ICONS.arrowUp}</button>
+            <button type="button" data-action="move-event" data-dir="1" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" ${eIdx === day.events.length - 1 ? 'disabled' : ''} title="Move Down" class="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 disabled:opacity-25 cursor-pointer">${ICONS.arrowDown}</button>
+            <button type="button" data-action="duplicate-event" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Duplicate Activity" class="p-1.5 rounded-lg text-white/55 hover:text-emerald-300 hover:bg-emerald-400/15 cursor-pointer">${ICONS.duplicate}</button>
+            <button type="button" data-action="copy-to-day" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Copy Activity to Another Day" class="p-1.5 rounded-lg text-white/55 hover:text-amber-300 hover:bg-amber-400/15 cursor-pointer">${ICONS.copyToDay}</button>
+            <button type="button" data-action="edit-event" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Edit Stop" class="p-1.5 rounded-lg text-white/60 hover:text-sky-300 hover:bg-sky-400/15 cursor-pointer">${ICONS.edit}</button>
+            <button type="button" data-action="delete-event" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Delete Stop" class="p-1.5 rounded-lg text-white/50 hover:text-rose-300 hover:bg-rose-500/15 cursor-pointer">${ICONS.trash}</button>
+          </div>
+        </div>
+
+        ${conflictBannerHtml}
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Helper: Render Hourly Time Slots View for a Day (Drag Any Stop Directly Onto an Hour)
+ */
+function renderTimeSlotsBodyHtml(day, conflictsMap) {
+  let minHour = 7;
+  let maxHour = 22;
+
+  day.events.forEach((ev) => {
+    ensureEventTimeFields(ev);
+    const h = Math.floor(ev.startMin / 60);
+    if (h < minHour) minHour = Math.max(0, h);
+    if (h > maxHour) maxHour = Math.min(23, h);
+  });
+
+  const hours = [];
+  for (let h = minHour; h <= maxHour; h++) hours.push(h);
+
+  return `
+    <div class="space-y-2">
+      ${hours.map((h) => {
+        const slotMin = h * 60;
+        const slotEvents = day.events
+          .map((ev, idx) => ({ ev, idx }))
+          .filter(({ ev }) => Math.floor(ev.startMin / 60) === h);
+
+        return `
+          <div
+            class="time-slot-zone group/slot rounded-2xl border p-2.5 sm:p-3 ${
+              slotEvents.length > 0
+                ? 'border-white/12 bg-white/[0.03]'
+                : 'border-dashed border-white/10 bg-black/20 hover:border-sky-400/35 hover:bg-sky-500/[0.05]'
+            }"
+            data-slot-day="${esc(day.id)}"
+            data-slot-min="${slotMin}"
+          >
+            <div class="flex flex-col sm:flex-row sm:items-start gap-2.5 sm:gap-3">
+              <div class="flex items-center justify-between sm:block sm:w-20 shrink-0 pt-0.5">
+                <span class="text-xs font-bold tracking-tight tabular-nums ${slotEvents.length > 0 ? 'text-sky-300' : 'text-white/45'}">
+                  ${formatMinutesTo12h(slotMin)}
+                </span>
+                ${slotEvents.length === 0 ? `
+                  <button
+                    type="button"
+                    data-action="add-event-at-slot"
+                    data-day="${esc(day.id)}"
+                    data-slot-min="${slotMin}"
+                    class="sm:hidden px-2 py-0.5 rounded-lg bg-white/8 hover:bg-sky-500/25 text-[10px] font-semibold text-white/65 hover:text-white cursor-pointer"
+                  >+ Add</button>
+                ` : ''}
+              </div>
+
+              <div class="flex-1 min-w-0 space-y-2.5">
+                ${slotEvents.length > 0
+                  ? slotEvents.map(({ ev, idx }) => renderStopCardHtml(day, ev, idx, conflictsMap, { showTimelineNode: false })).join('')
+                  : `
+                    <div class="flex items-center justify-between gap-2 py-0.5">
+                      <span class="text-[11px] text-white/35">Drop an activity here to snap to ${formatMinutesTo12h(slotMin)}</span>
+                      <button
+                        type="button"
+                        data-action="add-event-at-slot"
+                        data-day="${esc(day.id)}"
+                        data-slot-min="${slotMin}"
+                        class="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/8 hover:bg-sky-500/25 text-[11px] font-semibold text-white/65 hover:text-white opacity-0 group-hover/slot:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        ${ICONS.plus}
+                        <span>Add here</span>
+                      </button>
+                    </div>
+                  `
+                }
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+/**
+ * Render Detailed Editable Itinerary Timeline (Drag-and-Drop, Auto-Adjust, Transit, Warnings)
  */
 export function renderItinerary() {
   const state = appStore.state;
   const container = document.getElementById('itineraryContainer');
   const activeDayPill = document.getElementById('activeDayPill');
-  const viewSingleBtn = document.getElementById('viewSingleBtn');
-  const viewAllBtn = document.getElementById('viewAllBtn');
 
-  viewSingleBtn.className = !appStore.showAllDays
-    ? 'px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-white shadow cursor-pointer'
-    : 'px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
-  viewAllBtn.className = appStore.showAllDays
-    ? 'px-3 py-1 rounded-full text-xs font-semibold bg-white/20 text-white shadow cursor-pointer'
-    : 'px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
+  renderScheduleControls();
 
   if (state.days.length === 0) {
     activeDayPill.textContent = '0 Days';
@@ -71,104 +916,120 @@ export function renderItinerary() {
     ? `All ${state.days.length} Days`
     : `${state.days[appStore.activeCarouselIndex]?.shortDay} · ${state.days[appStore.activeCarouselIndex]?.shortDate}`;
 
-  container.innerHTML = visibleDays.map((day) => `
-    <article class="group/day rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 shadow-2xl shadow-black/40 overflow-hidden animate-fadeUp">
-      <!-- Glass Day Header -->
-      <div class="px-4 sm:px-7 py-4 sm:py-5 bg-white/[0.04] border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <h3 class="text-base sm:text-xl font-bold text-white tracking-tight break-words">${esc(day.title)}</h3>
-            ${day.tag ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-400/15 border border-sky-400/25 text-sky-300 shrink-0">${esc(day.tag)}</span>` : ''}
-          </div>
-          <p class="text-xs sm:text-sm text-white/60 mt-0.5 break-words">${esc(day.subtitle)}</p>
-        </div>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button type="button" data-action="add-event" data-day="${esc(day.id)}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-white transition-colors cursor-pointer">
-            ${ICONS.plus}
-            <span>Add Stop</span>
-          </button>
-          <button type="button" data-action="edit-day" data-day="${esc(day.id)}" title="Edit Day" class="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/75 hover:text-white transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover/day:opacity-100 cursor-pointer">
-            ${ICONS.edit}
-          </button>
-          <button type="button" data-action="delete-day" data-day="${esc(day.id)}" title="Delete Day" class="p-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover/day:opacity-100 cursor-pointer">
-            ${ICONS.trash}
-          </button>
-        </div>
-      </div>
+  const isSlotsMode = appStore.scheduleViewMode === 'slots';
 
-      <!-- Timeline Body -->
-      <div class="p-4 sm:p-7 space-y-5">
-        <div class="relative pl-3.5 sm:pl-5 space-y-3 before:content-[''] before:absolute before:left-[9px] sm:before:left-[13px] before:top-3 before:bottom-3 before:w-[2px] before:bg-gradient-to-b before:from-orange-400/75 before:via-sky-400/50 before:to-white/10">
-          ${day.events.length === 0
-            ? `<p class="text-xs text-white/45 pl-4 py-2">No stops yet. Click "+ Add Stop" to plan this day.</p>`
-            : day.events.map((ev, eIdx) => {
-                const cat = CATEGORY_META[ev.category] || CATEGORY_META.stop;
-                const mapUrl = getStopMapUrl(ev.location);
-                return `
-                  <div class="group relative pl-4 sm:pl-6">
-                    <span class="absolute -left-[10px] top-4 w-3.5 h-3.5 rounded-full border-2 border-[#16171d] bg-gradient-to-br from-orange-400 to-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.6)] group-hover:scale-125 transition-transform duration-200"></span>
-                    <div class="rounded-2xl border border-white/8 bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/20 p-3 sm:p-4 transition-all duration-200">
-                      <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
-                        <div class="flex items-start gap-2.5 sm:gap-3 min-w-0 flex-1">
-                          <span class="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 ${cat.color}">${ICONS[cat.icon]}</span>
-                          <div class="min-w-0 flex-1">
-                            <span class="inline-block text-xs font-bold tracking-tight text-orange-300 mb-0.5">${esc(ev.time)}</span>
-                            <p class="text-sm text-white/90 leading-relaxed break-words">${esc(ev.text)}</p>
-                            ${mapUrl ? `
-                              <a
-                                href="${esc(mapUrl)}"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title="Open ${esc(ev.location)} in Google Maps"
-                                class="mt-2 inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full text-[11px] font-medium bg-sky-500/15 hover:bg-sky-500/30 border border-sky-400/30 hover:border-sky-300/60 text-sky-200 hover:text-white transition-all duration-200"
-                              >
-                                <span class="text-sky-300 shrink-0">${ICONS.pin}</span>
-                                <span class="truncate">${esc(getStopLocationLabel(ev.location))}</span>
-                                <span class="opacity-65 shrink-0">${ICONS.link}</span>
-                              </a>
-                            ` : ''}
-                          </div>
-                        </div>
+  container.innerHTML = visibleDays.map((day) => {
+    const conflictsMap = getDayScheduleConflicts(day);
+    const dayStats = getDayTravelTotals(day);
 
-                        <!-- Inline Reorder / Edit / Delete (Appears on Hover on Desktop, Always Accessible on Mobile) -->
-                        <div class="flex items-center gap-1 self-end sm:self-start shrink-0 transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
-                          <button type="button" data-action="move-event" data-dir="-1" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" ${eIdx === 0 ? 'disabled' : ''} title="Move Up" class="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 disabled:opacity-25 cursor-pointer">${ICONS.arrowUp}</button>
-                          <button type="button" data-action="move-event" data-dir="1" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" ${eIdx === day.events.length - 1 ? 'disabled' : ''} title="Move Down" class="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/10 disabled:opacity-25 cursor-pointer">${ICONS.arrowDown}</button>
-                          <button type="button" data-action="edit-event" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Edit Stop" class="p-1.5 rounded-lg text-white/60 hover:text-sky-300 hover:bg-sky-400/15 cursor-pointer">${ICONS.edit}</button>
-                          <button type="button" data-action="delete-event" data-day="${esc(day.id)}" data-event="${esc(ev.id)}" title="Delete Stop" class="p-1.5 rounded-lg text-white/50 hover:text-rose-300 hover:bg-rose-500/15 cursor-pointer">${ICONS.trash}</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                `;
-              }).join('')
-          }
-        </div>
-
-        ${day.noteBody ? `
-          <div class="group/note rounded-2xl bg-orange-500/10 border border-orange-400/25 p-3.5 sm:p-4 flex items-start justify-between gap-3">
-            <div class="flex items-start gap-2.5 min-w-0 text-xs sm:text-sm text-orange-100/90 leading-relaxed break-words">
-              <span class="text-orange-300 shrink-0 mt-0.5">${ICONS.info}</span>
-              <div class="min-w-0"><strong class="font-bold text-orange-200">${esc(day.noteTitle || 'Tip')}:</strong> ${esc(day.noteBody)}</div>
+    return `
+      <article
+        data-day-drop="${esc(day.id)}"
+        class="day-article-drop group/day rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 shadow-2xl shadow-black/40 overflow-hidden animate-fadeUp transition-all duration-200"
+      >
+        <!-- Glass Day Header + Day Travel & Progress Telemetry -->
+        <div class="px-4 sm:px-7 py-4 sm:py-5 bg-white/[0.04] border-b border-white/10 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="text-base sm:text-xl font-bold text-white tracking-tight break-words">${esc(day.title)}</h3>
+                ${day.tag ? `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-400/15 border border-sky-400/25 text-sky-300 shrink-0">${esc(day.tag)}</span>` : ''}
+              </div>
+              <p class="text-xs sm:text-sm text-white/60 mt-0.5 break-words">${esc(day.subtitle)}</p>
             </div>
-            <button type="button" data-action="edit-day" data-day="${esc(day.id)}" title="Edit Note" class="p-1.5 rounded-lg text-orange-200/70 hover:text-white hover:bg-white/10 shrink-0 transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover/note:opacity-100 cursor-pointer">${ICONS.edit}</button>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" data-action="add-event" data-day="${esc(day.id)}" class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-semibold text-white transition-colors cursor-pointer">
+                ${ICONS.plus}
+                <span>Add Stop</span>
+              </button>
+              <button type="button" data-action="edit-day" data-day="${esc(day.id)}" title="Edit Day" class="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/75 hover:text-white transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover/day:opacity-100 cursor-pointer">
+                ${ICONS.edit}
+              </button>
+              <button type="button" data-action="delete-day" data-day="${esc(day.id)}" title="Delete Day" class="p-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover/day:opacity-100 cursor-pointer">
+                ${ICONS.trash}
+              </button>
+            </div>
           </div>
-        ` : ''}
-      </div>
-    </article>
-  `).join('');
 
+          <!-- Per-Day Travel Time, Distance, Completion & Conflict Pills -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px]">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 border border-white/10 text-sky-200 font-semibold tabular-nums">
+                <span class="text-sky-300">${ICONS.drive}</span>
+                <span>Day Travel: ${dayStats.totalMinutes > 0 ? formatDurationLabel(dayStats.totalMinutes) : '0m'} · ${formatMiles(dayStats.totalMiles)}</span>
+              </span>
+
+              <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/30 border border-white/10 text-emerald-200 font-semibold tabular-nums">
+                <span class="text-emerald-300">${ICONS.check}</span>
+                <span>${dayStats.completedCount}/${dayStats.totalCount} Done</span>
+              </span>
+
+              ${dayStats.conflictCount > 0 ? `
+                <button
+                  type="button"
+                  data-action="autofit-day"
+                  data-day="${esc(day.id)}"
+                  class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/45 text-rose-200 font-semibold cursor-pointer transition-colors"
+                >
+                  <span class="text-rose-300">${ICONS.alert}</span>
+                  <span>${dayStats.conflictCount} Tight ${dayStats.conflictCount === 1 ? 'Timing' : 'Timings'} · Auto-Fit</span>
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- Schedule Body (Timeline OR Time Slots) -->
+        <div class="p-4 sm:p-7 space-y-5">
+          ${isSlotsMode
+            ? renderTimeSlotsBodyHtml(day, conflictsMap)
+            : `
+              <div class="relative pl-3.5 sm:pl-5 space-y-3 before:content-[''] before:absolute before:left-[9px] sm:before:left-[13px] before:top-3 before:bottom-3 before:w-[2px] before:bg-gradient-to-b before:from-orange-400/75 before:via-sky-400/50 before:to-white/10">
+                ${day.events.length === 0
+                  ? `<p class="text-xs text-white/45 pl-4 py-4">No stops yet. Click "+ Add Stop" or drop an activity from another day here.</p>`
+                  : day.events.map((ev, eIdx) => renderStopCardHtml(day, ev, eIdx, conflictsMap, { showTimelineNode: true })).join('')
+                }
+              </div>
+            `
+          }
+
+          ${day.noteBody ? `
+            <div class="group/note rounded-2xl bg-orange-500/10 border border-orange-400/25 p-3.5 sm:p-4 flex items-start justify-between gap-3">
+              <div class="flex items-start gap-2.5 min-w-0 text-xs sm:text-sm text-orange-100/90 leading-relaxed break-words">
+                <span class="text-orange-300 shrink-0 mt-0.5">${ICONS.info}</span>
+                <div class="min-w-0"><strong class="font-bold text-orange-200">${esc(day.noteTitle || 'Tip')}:</strong> ${esc(day.noteBody)}</div>
+              </div>
+              <button type="button" data-action="edit-day" data-day="${esc(day.id)}" title="Edit Note" class="p-1.5 rounded-lg text-orange-200/70 hover:text-white hover:bg-white/10 shrink-0 transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover/note:opacity-100 cursor-pointer">${ICONS.edit}</button>
+            </div>
+          ` : ''}
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  // Bind all card & day action buttons
   container.querySelectorAll('[data-action]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const { action, day, event, dir } = btn.dataset;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const { action, day, event, dir, slotMin } = btn.dataset;
       if (action === 'edit-day') detailHooks.openDayModal(day);
       if (action === 'delete-day') detailHooks.confirmDeleteDay(day);
       if (action === 'add-event') detailHooks.openEventModal(day, null);
+      if (action === 'add-event-at-slot') detailHooks.openEventModal(day, null, Number(slotMin));
       if (action === 'edit-event') detailHooks.openEventModal(day, event);
       if (action === 'delete-event') detailHooks.deleteEvent(day, event);
       if (action === 'move-event') detailHooks.moveEvent(day, event, Number(dir));
+      if (action === 'toggle-complete') toggleStopCompleted(day, event);
+      if (action === 'toggle-fixed') toggleStopFixedTime(day, event);
+      if (action === 'duplicate-event') duplicateEvent(day, event);
+      if (action === 'copy-to-day') detailHooks.openCopyEventModal(day, event);
+      if (action === 'edit-travel') detailHooks.openTravelOverrideModal(day, event);
+      if (action === 'autofit-day') runAutoFitForDay(day);
     });
   });
+
+  // Initialize Pointer Drag-and-Drop on all handles
+  setupItineraryDragAndDrop(container);
 }
 
 /**
@@ -412,7 +1273,6 @@ export function renderBudget() {
 
       return `
         <div class="group rounded-2xl border ${isExpanded ? 'border-sky-400/35 bg-white/[0.06] shadow-lg shadow-sky-950/30' : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/15'} p-3 sm:p-2.5 transition-all duration-300 space-y-2.5 sm:space-y-2">
-          <!-- Responsive Header + Cost Fields (Stacks cleanly on mobile, 1-row on sm+) -->
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-2">
             <div class="flex items-center gap-2.5 sm:gap-2 min-w-0 flex-1">
               <span title="${esc(catMeta.label)}" class="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 shadow-md transition-transform duration-300 group-hover:scale-105 ${catMeta.style}">
@@ -430,7 +1290,6 @@ export function renderBudget() {
               </div>
             </div>
 
-            <!-- Estimated & Final Controls (2-col grid on mobile, compact inline on sm+) -->
             <div class="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-1.5 shrink-0">
               <div>
                 <span class="block sm:hidden text-[10px] font-bold uppercase tracking-wider text-white/45 mb-1">Estimated</span>
@@ -459,7 +1318,6 @@ export function renderBudget() {
             </div>
           </div>
 
-          <!-- Sub-row: Itemized Final Cost Toggle Pill + Variance Badge -->
           <div class="flex flex-wrap items-center justify-between gap-2 sm:pl-10">
             <button
               type="button"
@@ -1053,6 +1911,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
   const estTotalFmt = `$${estTotalNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const finTotalFmt = `$${finTotalNum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const readiness = getReadinessStats();
+  const tripTravel = getTripTravelTotals();
 
   const subText = pdfSafeText(state.meta.subtitle || '');
   doc.setFont('helvetica', 'normal');
@@ -1069,22 +1928,35 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
 
   drawGradientBar(doc, margin + 20, y + 1, contentW - 40, 2.5);
 
-  const livePillW = drawGlassPill(doc, margin + 20, y + 16, 'SPATIAL TRIPOS • TRAVEL PLAN', {
+  let heroPillX = margin + 20;
+  heroPillX += drawGlassPill(doc, heroPillX, y + 16, 'SPATIAL TRIPOS • TRAVEL PLAN', {
     bgRgb: [56, 189, 248],
     bgAlpha: 0.18,
     borderRgb: [125, 211, 252],
     borderAlpha: 0.42,
     textRgb: [186, 230, 253],
     fontSize: 7.2
-  });
+  }) + 8;
+
   if (activeDay?.location) {
-    drawGlassPill(doc, margin + 28 + livePillW, y + 16, pdfSafeText(`${activeDay.location} • ${activeDay.temp || '72°F'}`), {
+    heroPillX += drawGlassPill(doc, heroPillX, y + 16, pdfSafeText(`${activeDay.location} • ${activeDay.temp || '72°F'}`), {
       bgRgb: [251, 146, 60],
       bgAlpha: 0.18,
       borderRgb: [253, 186, 116],
       borderAlpha: 0.42,
       textRgb: [254, 215, 170],
       fontSize: 7.2
+    }) + 8;
+  }
+
+  if (tripTravel.totalMinutes > 0 || tripTravel.totalMiles > 0) {
+    drawGlassPill(doc, heroPillX, y + 16, pdfSafeText(`TRAVEL • ${formatDurationLabel(tripTravel.totalMinutes)} • ${formatMiles(tripTravel.totalMiles)}`), {
+      bgRgb: [52, 211, 153],
+      bgAlpha: 0.16,
+      borderRgb: [110, 231, 183],
+      borderAlpha: 0.38,
+      textRgb: [167, 243, 208],
+      fontSize: 7.0
     });
   }
 
@@ -1177,6 +2049,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
   // ==================== DAY-BY-DAY FROSTED GLASS ITINERARY ====================
   state.days.forEach((day, dIdx) => {
     ensureSpace(125);
+    const dayStats = getDayTravelTotals(day);
 
     const thumbData = dayThumbs[dIdx];
     const headerH = 62;
@@ -1215,7 +2088,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
       }) + 6;
     }
     if (day.tag) {
-      drawGlassPill(doc, pillX, y + 41, pdfSafeText(day.tag), {
+      pillX += drawGlassPill(doc, pillX, y + 41, pdfSafeText(day.tag), {
         bgRgb: [255, 255, 255],
         bgAlpha: 0.12,
         borderRgb: [255, 255, 255],
@@ -1224,28 +2097,44 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
         fontSize: 6.8,
         height: 14,
         padX: 7
+      }) + 6;
+    }
+    if (dayStats.totalMinutes > 0 || dayStats.totalMiles > 0) {
+      drawGlassPill(doc, pillX, y + 41, pdfSafeText(`Travel: ${formatDurationLabel(dayStats.totalMinutes)} • ${formatMiles(dayStats.totalMiles)}`), {
+        bgRgb: [52, 211, 153],
+        bgAlpha: 0.15,
+        borderRgb: [110, 231, 183],
+        borderAlpha: 0.32,
+        textRgb: [167, 243, 208],
+        fontSize: 6.6,
+        height: 14,
+        padX: 7
       });
     }
 
     if (thumbData) {
       try {
         doc.addImage(thumbData, 'PNG', margin + contentW - 98, y + 7, 86, 48);
-      } catch (e) {
-        // Skip thumbnail gracefully if image decode fails
-      }
+      } catch (e) {}
     }
 
     y += headerH + 8;
 
     day.events.forEach((ev, eIdx) => {
-      const cat = CATEGORY_META[ev.category] || CATEGORY_META.stop;
-      const evText = pdfSafeText(ev.text || '');
+      const cat = getCategoryMeta(ev.category);
+      const evText = pdfSafeText(`${ev.completed ? '[Done] ' : ''}${ev.text || ''}`);
       const evMapUrl = getStopMapUrl(ev.location);
       const evLocLabel = evMapUrl ? pdfSafeText(`Map: ${getStopLocationLabel(ev.location)}`) : '';
+      const leg = eIdx > 0 ? getLegTravelInfo(day, eIdx) : null;
+      const legLabel = leg && (leg.minutes > 0 || leg.miles > 0)
+        ? pdfSafeText(`Transit: ${formatDurationLabel(leg.minutes)}${leg.miles > 0 ? ` • ${formatMiles(leg.miles)}` : ''} (${leg.mode})`)
+        : '';
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.8);
       const textLines = doc.splitTextToSize(evText, contentW - 144);
-      const rowH = Math.max(28, textLines.length * 11.5 + (evMapUrl ? 26 : 14));
+      const extraLines = (evMapUrl ? 12 : 0) + (legLabel ? 11 : 0);
+      const rowH = Math.max(30, textLines.length * 11.5 + 14 + extraLines);
 
       ensureSpace(rowH + 6);
 
@@ -1264,14 +2153,15 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
         fillRgb: [16, 20, 30],
         fillAlpha: 0.64,
         tintAlpha: 0.04,
-        borderAlpha: 0.14,
+        borderRgb: ev.fixedTime ? [251, 191, 36] : [255, 255, 255],
+        borderAlpha: ev.fixedTime ? 0.30 : 0.14,
         topSheen: false
       });
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
       doc.setTextColor(253, 186, 116);
-      doc.text(pdfSafeText(ev.time || ''), margin + 32, y + 14, { maxWidth: 96 });
+      doc.text(pdfSafeText(`${ev.time || ''}${ev.fixedTime ? ' [Fixed]' : ''}`), margin + 32, y + 14, { maxWidth: 96 });
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(6.3);
@@ -1283,14 +2173,22 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
       doc.setTextColor(241, 245, 249);
       doc.text(textLines, margin + 132, y + 14);
 
+      let metaY = y + 14 + textLines.length * 11.5 + 1;
+      if (legLabel) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.2);
+        doc.setTextColor(148, 163, 184);
+        doc.text(legLabel, margin + 132, metaY);
+        metaY += 11;
+      }
+
       if (evMapUrl) {
-        const locY = y + 14 + textLines.length * 11.5 + 2;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.6);
         doc.setTextColor(125, 211, 252);
         const locTrunc = doc.splitTextToSize(evLocLabel, contentW - 148)[0] || evLocLabel;
-        doc.text(locTrunc, margin + 132, locY);
-        doc.link(margin + 130, locY - 8, Math.min(doc.getTextWidth(locTrunc) + 6, contentW - 144), 11, { url: evMapUrl });
+        doc.text(locTrunc, margin + 132, metaY);
+        doc.link(margin + 130, metaY - 8, Math.min(doc.getTextWidth(locTrunc) + 6, contentW - 144), 11, { url: evMapUrl });
       }
 
       y += rowH + 5;

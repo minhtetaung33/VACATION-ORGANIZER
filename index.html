@@ -314,19 +314,63 @@
       <div id="carouselDots" class="flex items-center justify-center gap-2 pt-1"></div>
     </section>
 
-    <!-- 5. INTERACTIVE ITINERARY SCHEDULE PANEL (Synced with 3D Carousel) -->
-    <section class="space-y-4 animate-fadeUp" style="animation-delay: 200ms;">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <h2 class="text-sm sm:text-base font-medium text-white/95 tracking-tight">Day Schedule &amp; Timeline</h2>
-          <span id="activeDayPill" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-400/15 border border-sky-400/30 text-sky-300 shrink-0">Day 1</span>
+    <!-- 5. SMART INTERACTIVE ITINERARY SCHEDULE & TIMELINE (Drag-and-Drop, Auto-Adjust, Transit Telemetry) -->
+    <section id="itinerarySection" class="space-y-4 animate-fadeUp" style="animation-delay: 200ms;">
+      <!-- Top Control Toolbar -->
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2.5 min-w-0">
+            <h2 class="text-sm sm:text-base font-medium text-white/95 tracking-tight">Day Schedule &amp; Timeline</h2>
+            <span id="activeDayPill" class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-400/15 border border-sky-400/30 text-sky-300 shrink-0">Day 1</span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Timeline vs Time Slots View Mode -->
+            <div class="flex items-center gap-1 p-1 rounded-full bg-black/35 border border-white/10 backdrop-blur-xl">
+              <button id="scheduleModeTimelineBtn" type="button" class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer">Timeline</button>
+              <button id="scheduleModeSlotsBtn" type="button" class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer">Time Slots</button>
+            </div>
+
+            <!-- Focused Day vs All Days -->
+            <div class="flex items-center gap-1 p-1 rounded-full bg-black/35 border border-white/10 backdrop-blur-xl">
+              <button id="viewSingleBtn" type="button" class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer">Focused Day</button>
+              <button id="viewAllBtn" type="button" class="px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer">All Days</button>
+            </div>
+
+            <!-- Ripple Auto-Adjust Toggle -->
+            <button id="autoAdjustToggleBtn" type="button" title="Automatically shift following flexible activities when moving or resizing stops" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 backdrop-blur-xl text-sky-200 transition-all cursor-pointer">
+              <span id="autoAdjustDot" class="w-2 h-2 rounded-full bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.9)]"></span>
+              <span id="autoAdjustLabel">Auto-Adjust: ON</span>
+            </button>
+
+            <!-- Custom Activity Categories Manager -->
+            <button id="manageCategoriesBtn" type="button" title="Create & manage custom activity categories" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/15 backdrop-blur-xl text-white/90 transition-all cursor-pointer">
+              <span id="manageCategoriesIcon" class="w-3.5 h-3.5 flex items-center justify-center text-orange-300"></span>
+              <span>Categories</span>
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-1.5 p-1 rounded-full bg-black/35 border border-white/10 backdrop-blur-xl">
-          <button id="viewSingleBtn" type="button" class="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer">Focused Day</button>
-          <button id="viewAllBtn" type="button" class="px-3 py-1 rounded-full text-xs font-medium transition-all cursor-pointer">All Days</button>
-        </div>
+
+        <!-- Whole-Trip Travel Distance, Time, Completion & Conflict Telemetry Bar -->
+        <div id="tripScheduleTelemetry" class="rounded-2xl bg-[#16171d]/65 backdrop-blur-2xl border border-white/12 px-3.5 sm:px-4 py-2.5 shadow-xl shadow-black/25"></div>
       </div>
 
+      <!-- Sticky Floating Cross-Day Drop Dock (Slides into view while dragging any stop) -->
+      <div id="crossDayDropDock" class="cross-day-dock hidden sticky top-3 z-40 rounded-2xl bg-[#12151f]/90 backdrop-blur-2xl border border-sky-400/40 p-3 shadow-[0_18px_50px_rgba(0,0,0,0.65)]">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-sky-300">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-300 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-orange-300"></span>
+            </span>
+            <span>Drop onto a Day to Move Activity</span>
+          </div>
+          <span class="text-[10px] text-white/50">Release to transfer &amp; auto-fit</span>
+        </div>
+        <div id="crossDayDropTargets" class="flex flex-wrap items-center gap-2"></div>
+      </div>
+
+      <!-- Day Schedule Cards Container -->
       <div id="itineraryContainer" class="space-y-5"></div>
     </section>
 

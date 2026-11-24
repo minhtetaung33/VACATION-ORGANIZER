@@ -39,23 +39,7 @@ export const ICONS = {
   bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
   wallet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`,
   chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="6 9 12 15 18 9"/></svg>`,
-  receipt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>`,
-  // Smart Timeline & Drag-and-Drop Icons
-  grip: `<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`,
-  lock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
-  unlock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
-  duplicate: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/><line x1="15.5" y1="12.5" x2="15.5" y2="18.5"/><line x1="12.5" y1="15.5" x2="18.5" y2="15.5"/></svg>`,
-  copyToDay: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="m10 15 2 2 4-4"/></svg>`,
-  route: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  palette: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
-  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
-  walk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="13" cy="4" r="2"/><path d="m7 21 3-4 2 1 2-5-3-2-3 2-2-2"/><path d="m14 10 3 2 2 5"/><path d="m12 18 2 3"/></svg>`,
-  camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
-  coffee: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>`,
-  music: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-  heart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`,
-  star: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
+  receipt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>`
 };
 
 export const LINK_ICON_META = {
@@ -70,30 +54,13 @@ export const LINK_ICON_META = {
 };
 
 export const CATEGORY_META = {
-  drive: { label: 'Drive / Transit', icon: 'drive', color: 'bg-sky-500/15 border-sky-400/30 text-sky-300', rgb: [56, 189, 248], builtin: true },
-  hotel: { label: 'Hotel / Rest', icon: 'hotel', color: 'bg-indigo-500/15 border-indigo-400/30 text-indigo-300', rgb: [129, 140, 248], builtin: true },
-  food: { label: 'Dining / Food', icon: 'food', color: 'bg-amber-500/15 border-amber-400/30 text-amber-300', rgb: [251, 191, 36], builtin: true },
-  highlight: { label: 'Highlight Event', icon: 'highlight', color: 'bg-orange-500/15 border-orange-400/30 text-orange-300', rgb: [251, 146, 60], builtin: true },
-  explore: { label: 'Explore / Sightseeing', icon: 'explore', color: 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300', rgb: [52, 211, 153], builtin: true },
-  stop: { label: 'General Stop', icon: 'stop', color: 'bg-white/10 border-white/20 text-white/80', rgb: [203, 213, 225], builtin: true }
+  drive: { label: 'Drive / Transit', icon: 'drive', color: 'bg-sky-500/15 border-sky-400/30 text-sky-300', rgb: [56, 189, 248] },
+  hotel: { label: 'Hotel / Rest', icon: 'hotel', color: 'bg-indigo-500/15 border-indigo-400/30 text-indigo-300', rgb: [129, 140, 248] },
+  food: { label: 'Dining / Food', icon: 'food', color: 'bg-amber-500/15 border-amber-400/30 text-amber-300', rgb: [251, 191, 36] },
+  highlight: { label: 'Highlight Event', icon: 'highlight', color: 'bg-orange-500/15 border-orange-400/30 text-orange-300', rgb: [251, 146, 60] },
+  explore: { label: 'Explore / Sightseeing', icon: 'explore', color: 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300', rgb: [52, 211, 153] },
+  stop: { label: 'General Stop', icon: 'stop', color: 'bg-white/10 border-white/20 text-white/80', rgb: [203, 213, 225] }
 };
-
-export const CUSTOM_CATEGORY_THEMES = {
-  rose: { label: 'Rose Glow', color: 'bg-rose-500/20 border-rose-400/40 text-rose-300', rgb: [251, 113, 133], swatch: 'bg-rose-400' },
-  violet: { label: 'Violet Neon', color: 'bg-violet-500/20 border-violet-400/40 text-violet-300', rgb: [167, 139, 250], swatch: 'bg-violet-400' },
-  cyan: { label: 'Ocean Cyan', color: 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300', rgb: [34, 211, 238], swatch: 'bg-cyan-400' },
-  emerald: { label: 'Emerald Leaf', color: 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300', rgb: [52, 211, 153], swatch: 'bg-emerald-400' },
-  amber: { label: 'Golden Amber', color: 'bg-amber-500/20 border-amber-400/40 text-amber-300', rgb: [251, 191, 36], swatch: 'bg-amber-400' },
-  orange: { label: 'Sunset Orange', color: 'bg-orange-500/20 border-orange-400/40 text-orange-300', rgb: [251, 146, 60], swatch: 'bg-orange-400' },
-  pink: { label: 'Berry Pink', color: 'bg-pink-500/20 border-pink-400/40 text-pink-300', rgb: [244, 114, 182], swatch: 'bg-pink-400' },
-  teal: { label: 'Lagoon Teal', color: 'bg-teal-500/20 border-teal-400/40 text-teal-300', rgb: [45, 212, 191], swatch: 'bg-teal-400' }
-};
-
-export const CUSTOM_CATEGORY_ICON_KEYS = [
-  'star', 'camera', 'coffee', 'music', 'heart', 'bag',
-  'ticket', 'mountain', 'leaf', 'plane', 'highlight', 'food',
-  'drive', 'hotel', 'explore', 'stop'
-];
 
 export const BUDGET_CATEGORY_META = {
   hotel: {
@@ -156,6 +123,7 @@ export const BUDGET_CATEGORY_META = {
 
 /**
  * Distinct Real High-Resolution Photography for 3D Parallax Carousel Cards
+ * (Guaranteed to be visually different from the main page backdrop photos)
  */
 export const REAL_CARD_BACKDROPS = {
   lights: 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1200&q=85',
@@ -208,7 +176,7 @@ export function registerPlannerHooks(overrides = {}) {
 }
 
 /**
- * Utilities: ID generator, HTML Escaping, Category, Budget & Maps Helpers
+ * Utilities: ID generator, HTML Escaping, Budget & Maps Helpers
  */
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -236,30 +204,6 @@ export function getStopLocationLabel(locationStr) {
   return trimmed;
 }
 
-export function getAllCategories() {
-  const merged = { ...CATEGORY_META };
-  const customs = Array.isArray(appStore?.state?.customCategories) ? appStore.state.customCategories : [];
-  customs.forEach((cat) => {
-    if (!cat?.id) return;
-    const theme = CUSTOM_CATEGORY_THEMES[cat.themeKey] || CUSTOM_CATEGORY_THEMES.violet;
-    merged[cat.id] = {
-      id: cat.id,
-      label: cat.label || 'Custom',
-      icon: ICONS[cat.icon] ? cat.icon : 'star',
-      themeKey: cat.themeKey || 'violet',
-      color: cat.color || theme.color,
-      rgb: Array.isArray(cat.rgb) ? cat.rgb : theme.rgb,
-      builtin: false
-    };
-  });
-  return merged;
-}
-
-export function getCategoryMeta(catKey) {
-  const all = getAllCategories();
-  return all[catKey] || CATEGORY_META.stop;
-}
-
 export function inferBudgetCategory(item) {
   if (item?.category && BUDGET_CATEGORY_META[item.category]) return item.category;
   const lbl = String(item?.label || '').toLowerCase();
@@ -281,573 +225,6 @@ export function getItemFinalCost(item) {
     return Number(item.final);
   }
   return null;
-}
-
-/**
- * ============================================================================
- * SMART TIME PARSING, FORMATTING & RIPPLE AUTO-ADJUST ENGINE
- * ============================================================================
- */
-function toMinutesFrom12h(h, m, period) {
-  let hr = Number(h) % 12;
-  if (String(period || '').toUpperCase() === 'PM') hr += 12;
-  return hr * 60 + (Number(m) || 0);
-}
-
-export function parseTimeStringToRange(timeStr, fallbackStartMin = 9 * 60) {
-  const raw = String(timeStr || '').trim();
-  if (!raw) return { startMin: fallbackStartMin, durationMin: 60 };
-
-  const cleaned = raw.replace(/[–—]/g, '-');
-
-  // Match range: "10:00 AM - 12:00 PM" or "5:30 - 6:00 PM"
-  const rangeMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?/i);
-  if (rangeMatch) {
-    const h1 = Number(rangeMatch[1]);
-    const m1 = Number(rangeMatch[2] || 0);
-    let p1 = rangeMatch[3] ? rangeMatch[3].toUpperCase() : null;
-    const h2 = Number(rangeMatch[4]);
-    const m2 = Number(rangeMatch[5] || 0);
-    let p2 = rangeMatch[6] ? rangeMatch[6].toUpperCase() : null;
-
-    if (!p1 && p2) {
-      // Infer start AM/PM: e.g., "11:30 - 1:00 PM" -> 11:30 AM to 1:00 PM; "5:30 - 6:00 PM" -> 5:30 PM to 6:00 PM
-      p1 = (p2 === 'PM' && h1 > h2 && h1 < 12) ? 'AM' : p2;
-    } else if (p1 && !p2) {
-      p2 = p1;
-    } else if (!p1 && !p2) {
-      p1 = fallbackStartMin >= 12 * 60 ? 'PM' : 'AM';
-      p2 = p1;
-    }
-
-    const startMin = toMinutesFrom12h(h1, m1, p1);
-    let endMin = toMinutesFrom12h(h2, m2, p2);
-    if (endMin <= startMin) endMin += 12 * 60;
-    const durationMin = Math.max(15, Math.min(12 * 60, endMin - startMin));
-    return { startMin, durationMin };
-  }
-
-  // Match single time: "4:00 PM", "By 11:00 AM", "9:15 PM"
-  const singleMatch = cleaned.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
-  if (singleMatch) {
-    const startMin = toMinutesFrom12h(Number(singleMatch[1]), Number(singleMatch[2] || 0), singleMatch[3]);
-    return { startMin, durationMin: 45 };
-  }
-
-  // Match 24h time: "16:30"
-  const milMatch = cleaned.match(/^(\d{1,2}):(\d{2})$/);
-  if (milMatch) {
-    return { startMin: Number(milMatch[1]) * 60 + Number(milMatch[2]), durationMin: 60 };
-  }
-
-  return { startMin: fallbackStartMin, durationMin: 60 };
-}
-
-export function formatMinutesTo12h(totalMin) {
-  const clamped = ((Math.round(totalMin) % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h24 = Math.floor(clamped / 60);
-  const m = clamped % 60;
-  const period = h24 >= 12 ? 'PM' : 'AM';
-  const h12 = h24 % 12 || 12;
-  return `${h12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-export function formatTimeRange(startMin, durationMin = 60) {
-  const start = ((Math.round(startMin) % (24 * 60)) + 24 * 60) % (24 * 60);
-  const dur = Math.max(5, Math.round(durationMin || 0));
-  const end = (start + dur) % (24 * 60);
-
-  const sH24 = Math.floor(start / 60);
-  const sM = start % 60;
-  const sP = sH24 >= 12 ? 'PM' : 'AM';
-  const sH12 = sH24 % 12 || 12;
-
-  const eH24 = Math.floor(end / 60);
-  const eM = end % 60;
-  const eP = eH24 >= 12 ? 'PM' : 'AM';
-  const eH12 = eH24 % 12 || 12;
-
-  const sClock = `${sH12}:${String(sM).padStart(2, '0')}`;
-  const eClock = `${eH12}:${String(eM).padStart(2, '0')}`;
-  return sP === eP ? `${sClock}–${eClock} ${eP}` : `${sClock} ${sP}–${eClock} ${eP}`;
-}
-
-export function formatDurationLabel(minutes) {
-  const m = Math.max(0, Math.round(Number(minutes) || 0));
-  if (m < 60) return `${m}m`;
-  const hrs = Math.floor(m / 60);
-  const rem = m % 60;
-  return rem === 0 ? `${hrs}h` : `${hrs}h ${rem}m`;
-}
-
-export function formatMiles(miles) {
-  const val = Number(miles) || 0;
-  if (val <= 0) return '0 mi';
-  return val < 10 ? `${val.toFixed(1)} mi` : `${Math.round(val)} mi`;
-}
-
-export function formatMinutesToInput(totalMin) {
-  const clamped = ((Math.round(totalMin) % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h = Math.floor(clamped / 60);
-  const m = clamped % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-export function parseInputTimeToMinutes(hhmm, fallback = 9 * 60) {
-  const match = String(hhmm || '').match(/^(\d{1,2}):(\d{2})$/);
-  if (!match) return fallback;
-  return Math.max(0, Math.min(23 * 60 + 59, Number(match[1]) * 60 + Number(match[2])));
-}
-
-export function ensureEventTimeFields(ev, fallbackStartMin = 9 * 60) {
-  if (!ev || typeof ev !== 'object') return ev;
-  if (!Number.isFinite(ev.startMin) || !Number.isFinite(ev.durationMin)) {
-    const parsed = parseTimeStringToRange(ev.time, fallbackStartMin);
-    if (!Number.isFinite(ev.startMin)) ev.startMin = parsed.startMin;
-    if (!Number.isFinite(ev.durationMin)) ev.durationMin = parsed.durationMin;
-  }
-  ev.startMin = Math.max(0, Math.min(23 * 60 + 55, Math.round(ev.startMin)));
-  ev.durationMin = Math.max(10, Math.min(12 * 60, Math.round(ev.durationMin)));
-  ev.fixedTime = Boolean(ev.fixedTime);
-  ev.completed = Boolean(ev.completed);
-  ev.travelMode = ev.travelMode === 'walk' ? 'walk' : 'drive';
-  if (ev.travelFromPrevMin !== null && ev.travelFromPrevMin !== undefined && ev.travelFromPrevMin !== '') {
-    ev.travelFromPrevMin = Math.max(0, Math.round(Number(ev.travelFromPrevMin)));
-  } else {
-    ev.travelFromPrevMin = null;
-  }
-  if (ev.travelFromPrevMiles !== null && ev.travelFromPrevMiles !== undefined && ev.travelFromPrevMiles !== '') {
-    ev.travelFromPrevMiles = Math.max(0, Number(ev.travelFromPrevMiles));
-  } else {
-    ev.travelFromPrevMiles = null;
-  }
-  if (!ev.time) {
-    ev.time = formatTimeRange(ev.startMin, ev.durationMin);
-  }
-  return ev;
-}
-
-export function normalizeDayEvents(day) {
-  if (!day || !Array.isArray(day.events)) return;
-  let cursor = 9 * 60;
-  day.events.forEach((ev) => {
-    ensureEventTimeFields(ev, cursor);
-    cursor = ev.startMin + ev.durationMin;
-  });
-}
-
-/**
- * Mark Ripple-Shifted Event IDs for Visual Shimmer Flash
- */
-let rippleClearTimer = null;
-
-export function markRippledEvents(ids = []) {
-  appStore.recentlyRippledIds = new Set(ids);
-  clearTimeout(rippleClearTimer);
-  if (ids.length > 0) {
-    rippleClearTimer = setTimeout(() => {
-      appStore.recentlyRippledIds.clear();
-    }, 1300);
-  }
-}
-
-/**
- * ============================================================================
- * LIVE TRAVEL TIME & DISTANCE ENGINE (Nominatim + Open-Meteo + OSRM + Fallback)
- * ============================================================================
- */
-const geoCoordsCache = new Map();
-const routeMetricsCache = new Map();
-const pendingRouteKeys = new Set();
-
-function normalizePlaceKey(str) {
-  return String(str || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function isUrlString(str) {
-  return /^https?:\/\//i.test(String(str || '').trim());
-}
-
-function haversineMiles(a, b) {
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const R = 3958.8;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLon / 2);
-  const h = s1 * s1 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * s2 * s2;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
-}
-
-async function geocodePlaceName(placeStr) {
-  const trimmed = String(placeStr || '').trim();
-  if (!trimmed || isUrlString(trimmed)) return null;
-  const key = normalizePlaceKey(trimmed);
-  if (geoCoordsCache.has(key)) return geoCoordsCache.get(key);
-
-  // 1. Try OpenStreetMap Nominatim (great for named landmarks & full addresses)
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(trimmed)}`,
-      { headers: { Accept: 'application/json' } }
-    );
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data[0]) {
-        const coords = { lat: Number(data[0].lat), lon: Number(data[0].lon) };
-        if (Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
-          geoCoordsCache.set(key, coords);
-          return coords;
-        }
-      }
-    }
-  } catch (err) {
-    // Fall through to Open-Meteo geocoding
-  }
-
-  // 2. Fallback to Open-Meteo city geocoding (extract city portion if comma-separated)
-  try {
-    const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
-    const cityGuess = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
-    const geoRes = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityGuess)}&count=1&language=en&format=json`
-    );
-    if (geoRes.ok) {
-      const geo = await geoRes.json();
-      const first = geo?.results?.[0];
-      if (first) {
-        const coords = { lat: Number(first.latitude), lon: Number(first.longitude) };
-        geoCoordsCache.set(key, coords);
-        return coords;
-      }
-    }
-  } catch (err) {
-    // Give up gracefully
-  }
-
-  geoCoordsCache.set(key, null);
-  return null;
-}
-
-async function fetchRouteBetweenLocations(fromStr, toStr, mode = 'drive') {
-  const fromKey = normalizePlaceKey(fromStr);
-  const toKey = normalizePlaceKey(toStr);
-  if (!fromKey || !toKey || fromKey === toKey) return { minutes: 0, miles: 0 };
-
-  const routeKey = `${mode}|${fromKey}|${toKey}`;
-  if (routeMetricsCache.has(routeKey)) return routeMetricsCache.get(routeKey);
-  if (pendingRouteKeys.has(routeKey)) return null;
-
-  pendingRouteKeys.add(routeKey);
-  try {
-    const [a, b] = await Promise.all([geocodePlaceName(fromStr), geocodePlaceName(toStr)]);
-    if (!a || !b) {
-      pendingRouteKeys.delete(routeKey);
-      return null;
-    }
-
-    const osrmProfile = mode === 'walk' ? 'foot' : 'driving';
-    try {
-      const url = `https://router.project-osrm.org/route/v1/${osrmProfile}/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const route = data?.routes?.[0];
-        if (route && Number.isFinite(route.distance) && Number.isFinite(route.duration)) {
-          const miles = Math.round((route.distance / 1609.344) * 10) / 10;
-          const minutes = Math.max(1, Math.round(route.duration / 60));
-          const result = { minutes, miles };
-          routeMetricsCache.set(routeKey, result);
-          pendingRouteKeys.delete(routeKey);
-          return result;
-        }
-      }
-    } catch (err) {
-      // Fall back to Haversine road-factor estimate
-    }
-
-    const straightMiles = haversineMiles(a, b);
-    const estMiles = Math.round(straightMiles * 1.22 * 10) / 10;
-    const speedMph = mode === 'walk' ? 3.0 : (estMiles > 15 ? 48 : 28);
-    const estMinutes = estMiles < 0.05 ? 0 : Math.max(2, Math.round((estMiles / speedMph) * 60));
-    const fallbackResult = { minutes: estMinutes, miles: estMiles };
-    routeMetricsCache.set(routeKey, fallbackResult);
-    pendingRouteKeys.delete(routeKey);
-    return fallbackResult;
-  } catch (err) {
-    pendingRouteKeys.delete(routeKey);
-    return null;
-  }
-}
-
-/**
- * Find the previous named location before event index `idx` within a day
- */
-function findOriginLocationForStop(day, idx) {
-  if (!day || idx <= 0) return '';
-  for (let i = idx - 1; i >= 0; i--) {
-    const loc = String(day.events[i]?.location || '').trim();
-    if (loc && !isUrlString(loc)) return loc;
-  }
-  return '';
-}
-
-/**
- * Get Travel Time & Distance Leading Into `day.events[idx]`
- */
-export function getLegTravelInfo(day, idx) {
-  if (!day || !Array.isArray(day.events) || idx <= 0 || idx >= day.events.length) {
-    return { minutes: 0, miles: 0, mode: 'drive', source: 'none', fromLabel: '', toLabel: '' };
-  }
-
-  const curr = day.events[idx];
-  const mode = curr.travelMode === 'walk' ? 'walk' : 'drive';
-  const toLoc = String(curr.location || '').trim();
-  const fromLoc = findOriginLocationForStop(day, idx);
-
-  // Manual override takes top priority
-  if (curr.travelFromPrevMin !== null && curr.travelFromPrevMin !== undefined) {
-    return {
-      minutes: Math.max(0, Number(curr.travelFromPrevMin) || 0),
-      miles: Math.max(0, Number(curr.travelFromPrevMiles) || 0),
-      mode,
-      source: 'manual',
-      fromLabel: fromLoc,
-      toLabel: toLoc
-    };
-  }
-
-  if (!fromLoc || !toLoc || isUrlString(toLoc)) {
-    return { minutes: 0, miles: 0, mode, source: 'none', fromLabel: fromLoc, toLabel: toLoc };
-  }
-
-  const fromKey = normalizePlaceKey(fromLoc);
-  const toKey = normalizePlaceKey(toLoc);
-  if (fromKey === toKey) {
-    return { minutes: 0, miles: 0, mode, source: 'same', fromLabel: fromLoc, toLabel: toLoc };
-  }
-
-  const routeKey = `${mode}|${fromKey}|${toKey}`;
-  if (routeMetricsCache.has(routeKey)) {
-    const cached = routeMetricsCache.get(routeKey);
-    return {
-      minutes: cached.minutes,
-      miles: cached.miles,
-      mode,
-      source: 'auto',
-      fromLabel: fromLoc,
-      toLabel: toLoc
-    };
-  }
-
-  return { minutes: 0, miles: 0, mode, source: 'pending', fromLabel: fromLoc, toLabel: toLoc };
-}
-
-export async function prefetchRoutesForDay(day, shouldRender = true) {
-  if (!day || !Array.isArray(day.events)) return false;
-  let updated = false;
-
-  for (let i = 1; i < day.events.length; i++) {
-    const ev = day.events[i];
-    if (ev.travelFromPrevMin !== null && ev.travelFromPrevMin !== undefined) continue;
-    const toLoc = String(ev.location || '').trim();
-    const fromLoc = findOriginLocationForStop(day, i);
-    if (!fromLoc || !toLoc || isUrlString(toLoc)) continue;
-    if (normalizePlaceKey(fromLoc) === normalizePlaceKey(toLoc)) continue;
-
-    const mode = ev.travelMode === 'walk' ? 'walk' : 'drive';
-    const routeKey = `${mode}|${normalizePlaceKey(fromLoc)}|${normalizePlaceKey(toLoc)}`;
-    if (!routeMetricsCache.has(routeKey)) {
-      const res = await fetchRouteBetweenLocations(fromLoc, toLoc, mode);
-      if (res) updated = true;
-    }
-  }
-
-  if (updated && shouldRender) {
-    plannerHooks.renderItinerary();
-  }
-  return updated;
-}
-
-export async function prefetchRoutesForTrip() {
-  const days = appStore.state?.days || [];
-  let anyUpdated = false;
-  for (const day of days) {
-    const changed = await prefetchRoutesForDay(day, false);
-    if (changed) anyUpdated = true;
-  }
-  if (anyUpdated) {
-    plannerHooks.renderItinerary();
-  }
-}
-
-/**
- * Compute Schedule Overlap / Tight-Timing Warnings for a Day
- */
-export function getDayScheduleConflicts(day) {
-  const conflicts = new Map();
-  if (!day || !Array.isArray(day.events)) return conflicts;
-
-  for (let i = 1; i < day.events.length; i++) {
-    const prev = day.events[i - 1];
-    const curr = day.events[i];
-    ensureEventTimeFields(prev);
-    ensureEventTimeFields(curr);
-
-    const leg = getLegTravelInfo(day, i);
-    const prevEnd = prev.startMin + prev.durationMin;
-    const travelMin = leg.minutes || 0;
-    const earliestArrival = prevEnd + travelMin;
-
-    if (earliestArrival > curr.startMin) {
-      conflicts.set(curr.id, {
-        overlapMin: earliestArrival - curr.startMin,
-        earliestArrival,
-        prevEnd,
-        travelMin,
-        isFixedTarget: Boolean(curr.fixedTime)
-      });
-    }
-  }
-  return conflicts;
-}
-
-export function getDayTravelTotals(day) {
-  if (!day || !Array.isArray(day.events)) {
-    return { totalMinutes: 0, totalMiles: 0, legCount: 0, completedCount: 0, totalCount: 0, conflictCount: 0 };
-  }
-  let totalMinutes = 0;
-  let totalMiles = 0;
-  let legCount = 0;
-  let completedCount = 0;
-
-  day.events.forEach((ev, idx) => {
-    if (ev.completed) completedCount += 1;
-    if (idx > 0) {
-      const leg = getLegTravelInfo(day, idx);
-      if (leg.minutes > 0 || leg.miles > 0) {
-        totalMinutes += leg.minutes;
-        totalMiles += leg.miles;
-        legCount += 1;
-      }
-    }
-  });
-
-  const conflicts = getDayScheduleConflicts(day);
-  return {
-    totalMinutes,
-    totalMiles: Math.round(totalMiles * 10) / 10,
-    legCount,
-    completedCount,
-    totalCount: day.events.length,
-    conflictCount: conflicts.size
-  };
-}
-
-export function getTripTravelTotals() {
-  const days = appStore.state?.days || [];
-  let totalMinutes = 0;
-  let totalMiles = 0;
-  let completedCount = 0;
-  let totalCount = 0;
-  let conflictCount = 0;
-
-  days.forEach((day) => {
-    const d = getDayTravelTotals(day);
-    totalMinutes += d.totalMinutes;
-    totalMiles += d.totalMiles;
-    completedCount += d.completedCount;
-    totalCount += d.totalCount;
-    conflictCount += d.conflictCount;
-  });
-
-  return {
-    totalMinutes,
-    totalMiles: Math.round(totalMiles * 10) / 10,
-    completedCount,
-    totalCount,
-    conflictCount
-  };
-}
-
-/**
- * Ripple Auto-Adjust Engine:
- * Automatically shifts following FLEXIBLE stops to make room after an anchor stop moves or resizes.
- * Fixed-Time stops are NEVER moved automatically.
- */
-export function rippleAdjustDay(day, fromIndex = 1, { packAll = false } = {}) {
-  const changedIds = [];
-  if (!day || !Array.isArray(day.events) || day.events.length <= 1) return changedIds;
-
-  const start = Math.max(1, fromIndex);
-  for (let i = start; i < day.events.length; i++) {
-    const prev = day.events[i - 1];
-    const curr = day.events[i];
-    ensureEventTimeFields(prev);
-    ensureEventTimeFields(curr);
-
-    // Fixed-Time stops stay locked at their reserved time
-    if (curr.fixedTime) continue;
-
-    const leg = getLegTravelInfo(day, i);
-    const requiredStart = Math.min(23 * 60 + 45, prev.startMin + prev.durationMin + (leg.minutes || 0));
-
-    if (packAll ? curr.startMin !== requiredStart : curr.startMin < requiredStart) {
-      curr.startMin = requiredStart;
-      curr.time = formatTimeRange(curr.startMin, curr.durationMin);
-      changedIds.push(curr.id);
-    }
-  }
-
-  return changedIds;
-}
-
-/**
- * 1-Click Smart Auto-Fit:
- * Shifts flexible stops smoothly to resolve schedule overlaps while respecting Fixed-Time anchors.
- */
-export function autoFitFlexibleDay(day) {
-  if (!day || !Array.isArray(day.events) || day.events.length === 0) return [];
-  const changedIds = [];
-
-  // Pass 1: Push flexible stops forward to clear any overlaps with prior stops + travel
-  const forwardChanged = rippleAdjustDay(day, 1, { packAll: false });
-  forwardChanged.forEach((id) => changedIds.push(id));
-
-  // Pass 2: If a flexible stop still pushes into a following Fixed-Time stop, trim/pull backward if room exists
-  for (let i = 1; i < day.events.length; i++) {
-    const fixedStop = day.events[i];
-    if (!fixedStop.fixedTime) continue;
-
-    const leg = getLegTravelInfo(day, i);
-    const prev = day.events[i - 1];
-    if (prev.fixedTime) continue;
-
-    const neededEnd = fixedStop.startMin - (leg.minutes || 0);
-    if (prev.startMin + prev.durationMin > neededEnd) {
-      // Check earliest possible start for prev
-      let earliestPrevStart = 6 * 60;
-      if (i - 2 >= 0) {
-        const beforePrev = day.events[i - 2];
-        const prevLeg = getLegTravelInfo(day, i - 1);
-        earliestPrevStart = beforePrev.startMin + beforePrev.durationMin + (prevLeg.minutes || 0);
-      }
-
-      const idealPrevStart = neededEnd - prev.durationMin;
-      if (idealPrevStart >= earliestPrevStart) {
-        prev.startMin = idealPrevStart;
-        prev.time = formatTimeRange(prev.startMin, prev.durationMin);
-        if (!changedIds.includes(prev.id)) changedIds.push(prev.id);
-      } else if (neededEnd - earliestPrevStart >= 15) {
-        prev.startMin = earliestPrevStart;
-        prev.durationMin = Math.max(15, neededEnd - earliestPrevStart);
-        prev.time = formatTimeRange(prev.startMin, prev.durationMin);
-        if (!changedIds.includes(prev.id)) changedIds.push(prev.id);
-      }
-    }
-  }
-
-  return changedIds;
 }
 
 /**
@@ -964,7 +341,7 @@ export function openConfirmDeleteModal({
  * Initial Thanksgiving Getaway Planner State
  */
 export function createInitialState() {
-  const trip = {
+  return {
     id: 'trip-thanksgiving-default',
     createdAt: Date.now(),
     meta: {
@@ -974,7 +351,6 @@ export function createInitialState() {
       firstDeparture: 'Friday · 4:00 PM',
       hotelPlan: '1 + 2 nights'
     },
-    customCategories: [],
     days: [
       {
         id: 'day-1',
@@ -994,11 +370,11 @@ export function createInitialState() {
         noteTitle: 'Parking',
         noteBody: "Mission Inn's visitor information lists public parking options, including advance parking. Reserve parking ahead if possible. Festival hours are 5–11 PM; it is closed Thanksgiving Day and Christmas Day.",
         events: [
-          { id: 'e1-1', time: '4:00–5:30 PM', startMin: 16 * 60, durationMin: 90, fixedTime: false, completed: false, category: 'drive', text: 'Leave home (West Covina / La Puente area). Allow extra time for holiday traffic.', location: 'La Puente, CA' },
-          { id: 'e1-2', time: '5:30–6:00 PM', startMin: 17 * 60 + 30, durationMin: 30, fixedTime: false, completed: false, category: 'hotel', text: 'Arrive at Riverside hotel, check in, unload luggage, and rest.', location: 'Downtown Riverside, CA' },
-          { id: 'e1-3', time: '6:15–7:00 PM', startMin: 18 * 60 + 15, durationMin: 45, fixedTime: false, completed: false, category: 'food', text: 'Dinner near downtown Riverside.', location: 'Main St Pedestrian Mall, Riverside, CA' },
-          { id: 'e1-4', time: '7:15–9:15 PM', startMin: 19 * 60 + 15, durationMin: 120, fixedTime: true, completed: false, category: 'highlight', text: 'Visit Mission Inn Festival of Lights. Enjoy the decorations and downtown atmosphere.', location: 'The Mission Inn Hotel & Spa, Riverside, CA' },
-          { id: 'e1-5', time: '9:15–9:45 PM', startMin: 21 * 60 + 15, durationMin: 30, fixedTime: false, completed: false, category: 'hotel', text: 'Walk or drive back to the hotel and get some rest.', location: '' }
+          { id: 'e1-1', time: '4:00 PM', category: 'drive', text: 'Leave home (West Covina / La Puente area). Allow extra time for holiday traffic.', location: '' },
+          { id: 'e1-2', time: '5:30–6:00 PM', category: 'hotel', text: 'Arrive at Riverside hotel, check in, unload luggage, and rest.', location: 'Downtown Riverside, CA' },
+          { id: 'e1-3', time: '6:15–7:00 PM', category: 'food', text: 'Dinner near downtown Riverside.', location: 'Main St Pedestrian Mall, Riverside, CA' },
+          { id: 'e1-4', time: '7:15–9:15 PM', category: 'highlight', text: 'Visit Mission Inn Festival of Lights. Enjoy the decorations and downtown atmosphere.', location: 'The Mission Inn Hotel & Spa, Riverside, CA' },
+          { id: 'e1-5', time: '9:15 PM', category: 'hotel', text: 'Walk or drive back to the hotel and get some rest.', location: '' }
         ]
       },
       {
@@ -1019,15 +395,15 @@ export function createInitialState() {
         noteTitle: 'Ticket reminder',
         noteBody: 'The official Day + Night bundle is listed at $64.95 per adult and $49.95 per child ages 3–17. Under age 3 is free. Daytime guests must exit by 5 PM; WildLights entry starts at 6 PM. Check the date-specific ticket page before buying.',
         events: [
-          { id: 'e2-1', time: '8:30–9:30 AM', startMin: 8 * 60 + 30, durationMin: 60, fixedTime: false, completed: false, category: 'food', text: 'Breakfast, pack, and prepare for hotel checkout.', location: 'Downtown Riverside, CA' },
-          { id: 'e2-2', time: '11:00 AM–12:15 PM', startMin: 11 * 60, durationMin: 75, fixedTime: true, completed: false, category: 'drive', text: 'Check out of Riverside hotel. Drive to Palm Desert.', location: 'Palm Desert, CA' },
-          { id: 'e2-3', time: '12:15–12:30 PM', startMin: 12 * 60 + 15, durationMin: 15, fixedTime: false, completed: false, category: 'hotel', text: 'Arrive at Palm Desert hotel. Ask about early check-in or luggage storage. Keep valuables with you.', location: 'Palm Desert, CA' },
-          { id: 'e2-4', time: '12:30–1:15 PM', startMin: 12 * 60 + 30, durationMin: 45, fixedTime: false, completed: false, category: 'food', text: 'Lunch near the hotel or at the zoo, depending on timing.', location: '' },
-          { id: 'e2-5', time: '1:15–4:45 PM', startMin: 13 * 60 + 15, durationMin: 210, fixedTime: false, completed: false, category: 'explore', text: 'Explore The Living Desert Zoo and Gardens. Prioritize the animals and exhibits your family wants to see.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
-          { id: 'e2-6', time: '5:00–5:15 PM', startMin: 17 * 60, durationMin: 15, fixedTime: true, completed: false, category: 'stop', text: 'Everyone must exit the zoo for the daytime break.', location: '' },
-          { id: 'e2-7', time: '5:15–5:50 PM', startMin: 17 * 60 + 15, durationMin: 35, fixedTime: false, completed: false, category: 'hotel', text: 'Hotel check-in / rest / change clothes. Choose a hotel close to the zoo.', location: 'Palm Desert, CA' },
-          { id: 'e2-8', time: '6:00–8:15 PM', startMin: 18 * 60, durationMin: 135, fixedTime: true, completed: false, category: 'highlight', text: 'Return for WildLights. Last admission is 8:30 PM; event ends at 9:00 PM.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
-          { id: 'e2-9', time: '8:15–8:45 PM', startMin: 20 * 60 + 15, durationMin: 30, fixedTime: false, completed: false, category: 'hotel', text: 'Return to hotel. Stay in the same Palm Desert hotel Saturday and Sunday nights.', location: 'Palm Desert, CA' }
+          { id: 'e2-1', time: '8:30–9:30 AM', category: 'food', text: 'Breakfast, pack, and prepare for hotel checkout.', location: '' },
+          { id: 'e2-2', time: 'By 11:00 AM', category: 'drive', text: 'Check out of Riverside hotel. Drive to Palm Desert.', location: 'Palm Desert, CA' },
+          { id: 'e2-3', time: '12:15 PM', category: 'hotel', text: 'Arrive at Palm Desert hotel. Ask about early check-in or luggage storage. Keep valuables with you.', location: 'Palm Desert, CA' },
+          { id: 'e2-4', time: '12:30–1:15 PM', category: 'food', text: 'Lunch near the hotel or at the zoo, depending on timing.', location: '' },
+          { id: 'e2-5', time: '1:15–4:45 PM', category: 'explore', text: 'Explore The Living Desert Zoo and Gardens. Prioritize the animals and exhibits your family wants to see.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
+          { id: 'e2-6', time: '5:00 PM', category: 'stop', text: 'Everyone must exit the zoo for the daytime break.', location: '' },
+          { id: 'e2-7', time: '5:15–5:50 PM', category: 'hotel', text: 'Hotel check-in / rest / change clothes. Choose a hotel close to the zoo.', location: '' },
+          { id: 'e2-8', time: '6:00–8:15 PM', category: 'highlight', text: 'Return for WildLights. Last admission is 8:30 PM; event ends at 9:00 PM.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
+          { id: 'e2-9', time: '8:15 PM', category: 'hotel', text: 'Return to hotel. Stay in the same Palm Desert hotel Saturday and Sunday nights.', location: '' }
         ]
       },
       {
@@ -1048,15 +424,15 @@ export function createInitialState() {
         noteTitle: 'Mountain reminder',
         noteBody: 'The Mountain Station is 8,516 ft high and can be 30–40°F colder than the desert floor. Snow is possible in November, but it is not guaranteed. Bring warm layers for everyone, especially the baby. Check the Tram Cam and forecast a day or two before.',
         events: [
-          { id: 'e3-1', time: '9:00–9:45 AM', startMin: 9 * 60, durationMin: 45, fixedTime: false, completed: false, category: 'drive', text: 'Breakfast and drive to Palm Springs.', location: 'Palm Desert, CA' },
-          { id: 'e3-2', time: '10:00 AM–12:00 PM', startMin: 10 * 60, durationMin: 120, fixedTime: false, completed: false, category: 'explore', text: 'Visit Palm Springs Air Museum (open daily 10 AM–5 PM; admission applies).', location: 'Palm Springs Air Museum, Palm Springs, CA' },
-          { id: 'e3-3', time: '12:00–1:00 PM', startMin: 12 * 60, durationMin: 60, fixedTime: false, completed: false, category: 'food', text: "Lunch in Palm Springs. A downtown family-friendly option is Sherman's Deli & Bakery; another is Elmer's Restaurant.", location: "Sherman's Deli & Bakery, Palm Springs, CA" },
-          { id: 'e3-4', time: '1:15–2:45 PM', startMin: 13 * 60 + 15, durationMin: 90, fixedTime: false, completed: false, category: 'explore', text: 'Visit Moorten Botanical Garden (season hours 10 AM–4 PM, closed Wednesday).', location: 'Moorten Botanical Garden, Palm Springs, CA' },
-          { id: 'e3-5', time: '3:00–3:45 PM', startMin: 15 * 60, durationMin: 45, fixedTime: false, completed: false, category: 'drive', text: 'Drive to the Tramway Valley Station, park, use restrooms, and get warm layers ready.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
-          { id: 'e3-6', time: '3:45–4:15 PM', startMin: 15 * 60 + 45, durationMin: 30, fixedTime: true, completed: false, category: 'highlight', text: 'Ride the Palm Springs Aerial Tramway up. Aim for daylight views and sunset from the Mountain Station.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
-          { id: 'e3-7', time: '5:15–6:45 PM', startMin: 17 * 60 + 15, durationMin: 90, fixedTime: true, completed: false, category: 'food', text: 'Dinner at Peaks Restaurant at the top. Reserve a table in advance; dinner seating is listed from 5 PM to 7:45 PM.', location: 'Peaks Restaurant, Palm Springs, CA' },
-          { id: 'e3-8', time: '6:45–8:15 PM', startMin: 18 * 60 + 45, durationMin: 90, fixedTime: false, completed: false, category: 'explore', text: 'Enjoy the night views, observation decks, and indoor areas. Take the tram down with plenty of time before the 9:30 PM last car.', location: '' },
-          { id: 'e3-9', time: '8:30–9:00 PM', startMin: 20 * 60 + 30, durationMin: 30, fixedTime: false, completed: false, category: 'hotel', text: 'Return to Palm Desert hotel.', location: 'Palm Desert, CA' }
+          { id: 'e3-1', time: '9:00 AM', category: 'drive', text: 'Breakfast and drive to Palm Springs.', location: 'Palm Springs, CA' },
+          { id: 'e3-2', time: '10:00 AM–12:00 PM', category: 'explore', text: 'Visit Palm Springs Air Museum (open daily 10 AM–5 PM; admission applies).', location: 'Palm Springs Air Museum, Palm Springs, CA' },
+          { id: 'e3-3', time: '12:00–1:00 PM', category: 'food', text: "Lunch in Palm Springs. A downtown family-friendly option is Sherman's Deli & Bakery; another is Elmer's Restaurant.", location: "Sherman's Deli & Bakery, Palm Springs, CA" },
+          { id: 'e3-4', time: '1:15–2:45 PM', category: 'explore', text: 'Visit Moorten Botanical Garden (season hours 10 AM–4 PM, closed Wednesday).', location: 'Moorten Botanical Garden, Palm Springs, CA' },
+          { id: 'e3-5', time: '3:00–3:45 PM', category: 'drive', text: 'Drive to the Tramway Valley Station, park, use restrooms, and get warm layers ready.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
+          { id: 'e3-6', time: '3:45–4:15 PM', category: 'highlight', text: 'Ride the Palm Springs Aerial Tramway up. Aim for daylight views and sunset from the Mountain Station.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
+          { id: 'e3-7', time: '5:15–6:45 PM', category: 'food', text: 'Dinner at Peaks Restaurant at the top. Reserve a table in advance; dinner seating is listed from 5 PM to 7:45 PM.', location: 'Peaks Restaurant, Palm Springs, CA' },
+          { id: 'e3-8', time: '6:45–8:15 PM', category: 'explore', text: 'Enjoy the night views, observation decks, and indoor areas. Take the tram down with plenty of time before the 9:30 PM last car.', location: '' },
+          { id: 'e3-9', time: '8:30–9:00 PM', category: 'hotel', text: 'Return to Palm Desert hotel.', location: '' }
         ]
       },
       {
@@ -1077,13 +453,13 @@ export function createInitialState() {
         noteTitle: 'Monday detail',
         noteBody: "Santa's Workshop is not listed for Nov 30. Weekday Christmas Nights admission is listed from 5–10 PM. Buy date-specific tickets ahead; gate tickets may not be available.",
         events: [
-          { id: 'e4-1', time: '8:30–9:30 AM', startMin: 8 * 60 + 30, durationMin: 60, fixedTime: false, completed: false, category: 'food', text: 'Breakfast and pack.', location: 'Palm Desert, CA' },
-          { id: 'e4-2', time: '11:00–11:20 AM', startMin: 11 * 60, durationMin: 20, fixedTime: true, completed: false, category: 'hotel', text: 'Check out of Palm Desert hotel.', location: '' },
-          { id: 'e4-3', time: '11:30 AM–2:30 PM', startMin: 11 * 60 + 30, durationMin: 180, fixedTime: false, completed: false, category: 'explore', text: 'Relaxed lunch, shopping, or a short family stop. Keep this part flexible.', location: '' },
-          { id: 'e4-4', time: '2:45–4:30 PM', startMin: 14 * 60 + 45, durationMin: 105, fixedTime: false, completed: false, category: 'drive', text: 'Drive toward Cherry Valley. Allow extra time for traffic and a baby break.', location: 'Cherry Valley, CA' },
-          { id: 'e4-5', time: '5:00–7:30 PM', startMin: 17 * 60, durationMin: 150, fixedTime: true, completed: false, category: 'highlight', text: 'Visit 123 Farm Christmas Nights. Monday weekday hours are 5–10 PM. Wander through the Christmas village and lights.', location: '123 Farm, Cherry Valley, CA' },
-          { id: 'e4-6', time: '7:30–8:00 PM', startMin: 19 * 60 + 30, durationMin: 30, fixedTime: false, completed: false, category: 'food', text: 'Snack or early dinner at the farm, then start driving home.', location: '' },
-          { id: 'e4-7', time: '8:30–10:00 PM', startMin: 20 * 60 + 30, durationMin: 90, fixedTime: false, completed: false, category: 'drive', text: 'Estimated arrival home, depending on traffic and stops.', location: 'La Puente, CA' }
+          { id: 'e4-1', time: '8:30–9:30 AM', category: 'food', text: 'Breakfast and pack.', location: '' },
+          { id: 'e4-2', time: 'By 11:00 AM', category: 'hotel', text: 'Check out of Palm Desert hotel.', location: '' },
+          { id: 'e4-3', time: '11:30 AM–2:30 PM', category: 'explore', text: 'Relaxed lunch, shopping, or a short family stop. Keep this part flexible.', location: '' },
+          { id: 'e4-4', time: '2:45–4:30 PM', category: 'drive', text: 'Drive toward Cherry Valley. Allow extra time for traffic and a baby break.', location: 'Cherry Valley, CA' },
+          { id: 'e4-5', time: '5:00–7:30 PM', category: 'highlight', text: 'Visit 123 Farm Christmas Nights. Monday weekday hours are 5–10 PM. Wander through the Christmas village and lights.', location: '123 Farm, Cherry Valley, CA' },
+          { id: 'e4-6', time: '7:30–8:00 PM', category: 'food', text: 'Snack or early dinner at the farm, then start driving home.', location: '' },
+          { id: 'e4-7', time: 'Around 9:30–10:00 PM', category: 'drive', text: 'Estimated arrival home, depending on traffic and stops.', location: '' }
         ]
       }
     ],
@@ -1143,8 +519,6 @@ export function createInitialState() {
       { id: 'l7', label: '123 Farm tickets', url: 'https://ticket.123farm.com/xmas', icon: 'ticket', location: 'Cherry Valley, CA', hours: 'Mon Weekday 5:00 PM – 10:00 PM', info: 'Buy date-specific tickets online; gate tickets may not be available.' }
     ]
   };
-  trip.days.forEach(normalizeDayEvents);
-  return trip;
 }
 
 /**
@@ -1159,7 +533,7 @@ export function createNewDefaultTrip({
   startLocation = 'San Diego'
 } = {}) {
   const loc = startLocation.trim() || 'California';
-  const trip = {
+  return {
     id: uid('trip'),
     createdAt: Date.now(),
     meta: {
@@ -1169,7 +543,6 @@ export function createNewDefaultTrip({
       firstDeparture,
       hotelPlan
     },
-    customCategories: [],
     days: [
       {
         id: uid('day'),
@@ -1189,9 +562,9 @@ export function createNewDefaultTrip({
         noteTitle: 'Arrival tip',
         noteBody: 'Confirm your hotel check-in window, parking options, and dinner reservations ahead of time.',
         events: [
-          { id: uid('ev'), time: '9:00–11:00 AM', startMin: 9 * 60, durationMin: 120, fixedTime: false, completed: false, category: 'drive', text: `Depart for ${loc}. Allow buffer time for traffic and scenic stops.`, location: loc },
-          { id: uid('ev'), time: '3:00–4:00 PM', startMin: 15 * 60, durationMin: 60, fixedTime: true, completed: false, category: 'hotel', text: `Check in to your ${loc} hotel, drop off luggage, and freshen up.`, location: loc },
-          { id: uid('ev'), time: '6:00–7:30 PM', startMin: 18 * 60, durationMin: 90, fixedTime: false, completed: false, category: 'food', text: `Welcome dinner and evening stroll around ${loc}.`, location: loc }
+          { id: uid('ev'), time: firstDeparture || '9:00 AM', category: 'drive', text: `Depart for ${loc}. Allow buffer time for traffic and scenic stops.`, location: loc },
+          { id: uid('ev'), time: '3:00 PM', category: 'hotel', text: `Check in to your ${loc} hotel, drop off luggage, and freshen up.`, location: loc },
+          { id: uid('ev'), time: '6:00 PM', category: 'food', text: `Welcome dinner and evening stroll around ${loc}.`, location: loc }
         ]
       }
     ],
@@ -1229,8 +602,6 @@ export function createNewDefaultTrip({
     notes: '',
     links: []
   };
-  trip.days.forEach(normalizeDayEvents);
-  return trip;
 }
 
 /**
@@ -1244,13 +615,8 @@ export const appStore = {
   state: initialTrip,
   activeCarouselIndex: 0,
   showAllDays: false,
-  scheduleViewMode: 'timeline', // 'timeline' | 'slots'
-  autoAdjustTimes: true,
   weatherPanelExpanded: true,
   expandedBudgetIds: new Set(),
-  recentlyRippledIds: new Set(),
-  recentlyDroppedId: null,
-  recentlyCompletedId: null,
   currentBackdropUrl: ''
 };
 
@@ -1269,21 +635,18 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
   const base = fallbackIdx === 0 && rawTrip?.id === 'trip-thanksgiving-default'
     ? createInitialState()
     : createNewDefaultTrip();
-  const normalized = {
+  return {
     ...base,
     ...rawTrip,
     id: rawTrip?.id || uid('trip'),
     createdAt: rawTrip?.createdAt || Date.now(),
     meta: { ...base.meta, ...(rawTrip?.meta || {}) },
-    customCategories: Array.isArray(rawTrip?.customCategories) ? rawTrip.customCategories : [],
     days: Array.isArray(rawTrip?.days) ? rawTrip.days : base.days,
     checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
     budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
     notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : '',
     links: Array.isArray(rawTrip?.links) ? rawTrip.links : []
   };
-  normalized.days.forEach(normalizeDayEvents);
-  return normalized;
 }
 
 export function applyParsedPayload(parsed) {
@@ -1328,7 +691,6 @@ export function switchToTrip(tripId, silent = false) {
   plannerHooks.renderAll();
   prefetchAllDaysWeather();
   prefetchAllCardPhotos();
-  prefetchRoutesForTrip();
   scheduleCloudSave();
   if (!silent) showToast(`Switched to "${appStore.state.meta.title}"`);
 }
@@ -1384,7 +746,9 @@ export function applyBackdropPhoto(url) {
     activeBgSlot = nextSlot;
     appStore.currentBackdropUrl = url;
   };
-  preloader.onerror = () => {};
+  preloader.onerror = () => {
+    // Keep current backdrop if remote URL fails
+  };
   preloader.src = url;
 }
 
@@ -1408,7 +772,7 @@ export async function fetchRealDestinationPhoto(query, excludeUrl = '') {
       }
     }
   } catch (err) {
-    // Fallback to curated photography silently
+    // Fallback to curated real photography silently
   }
   return null;
 }
@@ -1569,7 +933,6 @@ export function serializeStateForCloud() {
     id: trip.id,
     createdAt: trip.createdAt || Date.now(),
     meta: trip.meta,
-    customCategories: Array.isArray(trip.customCategories) ? trip.customCategories : [],
     days: (trip.days || []).map((d) => {
       const copy = { ...d };
       delete copy.resolvedCardPhoto;
@@ -1582,7 +945,7 @@ export function serializeStateForCloud() {
     links: trip.links
   }));
   return JSON.stringify({
-    version: 3,
+    version: 2,
     activeTripId: appStore.activeTripId,
     trips: cleanTrips
   });
@@ -1636,7 +999,6 @@ export async function initCloudSync() {
                 }
                 prefetchAllDaysWeather();
                 prefetchAllCardPhotos();
-                prefetchRoutesForTrip();
               }
               isApplyingRemote = false;
             } catch (parseErr) {
@@ -1661,23 +1023,16 @@ export async function initCloudSync() {
  * Render Static UI Icons & Live Animated Clock
  */
 export function renderStaticIcons() {
-  const iconBindings = [
-    ['editHeroInlineBtn', ICONS.edit],
-    ['addDayIcon', ICONS.plus],
-    ['addNewTripIcon', ICONS.newTrip],
-    ['switchTripsIcon', ICONS.trips],
-    ['savePdfIcon', ICONS.download],
-    ['prevIcon', ICONS.chevronLeft],
-    ['nextIcon', ICONS.chevronRight],
-    ['copyNotesIcon', ICONS.copy],
-    ['modalCloseBtn', ICONS.close],
-    ['toggleWeatherChevron', ICONS.chevronDown],
-    ['manageCategoriesIcon', ICONS.palette]
-  ];
-  iconBindings.forEach(([id, svg]) => {
-    const el = document.getElementById(id);
-    if (el) el.innerHTML = svg;
-  });
+  document.getElementById('editHeroInlineBtn').innerHTML = ICONS.edit;
+  document.getElementById('addDayIcon').innerHTML = ICONS.plus;
+  document.getElementById('addNewTripIcon').innerHTML = ICONS.newTrip;
+  document.getElementById('switchTripsIcon').innerHTML = ICONS.trips;
+  document.getElementById('savePdfIcon').innerHTML = ICONS.download;
+  document.getElementById('prevIcon').innerHTML = ICONS.chevronLeft;
+  document.getElementById('nextIcon').innerHTML = ICONS.chevronRight;
+  document.getElementById('copyNotesIcon').innerHTML = ICONS.copy;
+  document.getElementById('modalCloseBtn').innerHTML = ICONS.close;
+  document.getElementById('toggleWeatherChevron').innerHTML = ICONS.chevronDown;
 }
 
 export function updateClock() {

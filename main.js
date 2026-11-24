@@ -9,7 +9,6 @@ import {
   updateBackdropForDay,
   prefetchAllDaysWeather,
   prefetchAllCardPhotos,
-  prefetchRoutesForTrip,
   initCloudSync,
   scheduleCloudSave,
   showToast,
@@ -33,9 +32,6 @@ import {
   openDayModal,
   confirmDeleteDay,
   openEventModal,
-  openCopyEventModal,
-  openTravelOverrideModal,
-  openCustomCategoriesModal,
   deleteEvent,
   moveEvent,
   confirmResetPlanner
@@ -58,8 +54,6 @@ registerDetailHooks({
   openEventModal,
   deleteEvent,
   moveEvent,
-  openCopyEventModal,
-  openTravelOverrideModal,
   openChecklistCategoryModal,
   openBudgetModal,
   openLinkModal
@@ -89,10 +83,9 @@ function bindMobileViewportGuards() {
 }
 
 /**
- * Bind Global UI Controls, Smart Schedule Controls, Touch Swipe & Keyboard Navigation
+ * Bind Global UI Controls, Directional Touch Swipe & Keyboard Navigation
  */
 function bindGlobalEvents() {
-  // Header & Trip Controls
   document.getElementById('editHeroInlineBtn').addEventListener('click', () => openHeroModal('edit'));
   document.getElementById('addDayBtn').addEventListener('click', () => openDayModal(null));
   document.getElementById('addNewTripBtn').addEventListener('click', () => openHeroModal('create'));
@@ -100,22 +93,11 @@ function bindGlobalEvents() {
   document.getElementById('savePdfBtn').addEventListener('click', openSavePdfFlow);
   document.getElementById('resetPlannerBtn').addEventListener('click', confirmResetPlanner);
 
-  // 3D Carousel Controls
   document.getElementById('carouselPrevBtn').addEventListener('click', () => {
     setActiveCarouselIndex(appStore.activeCarouselIndex - 1);
   });
   document.getElementById('carouselNextBtn').addEventListener('click', () => {
     setActiveCarouselIndex(appStore.activeCarouselIndex + 1);
-  });
-
-  // Smart Day Schedule Controls (Timeline vs. Time Slots, Focused vs. All Days, Auto-Adjust, Custom Categories)
-  document.getElementById('scheduleModeTimelineBtn').addEventListener('click', () => {
-    appStore.scheduleViewMode = 'timeline';
-    renderItinerary();
-  });
-  document.getElementById('scheduleModeSlotsBtn').addEventListener('click', () => {
-    appStore.scheduleViewMode = 'slots';
-    renderItinerary();
   });
 
   document.getElementById('viewSingleBtn').addEventListener('click', () => {
@@ -127,21 +109,6 @@ function bindGlobalEvents() {
     renderItinerary();
   });
 
-  document.getElementById('autoAdjustToggleBtn').addEventListener('click', () => {
-    appStore.autoAdjustTimes = !appStore.autoAdjustTimes;
-    renderItinerary();
-    showToast(
-      appStore.autoAdjustTimes
-        ? 'Auto-Adjust ON · Flexible stops shift automatically'
-        : 'Auto-Adjust OFF · Times stay manual'
-    );
-  });
-
-  document.getElementById('manageCategoriesBtn').addEventListener('click', () => {
-    openCustomCategoriesModal();
-  });
-
-  // Other Dashboard Modules
   document.getElementById('addBudgetRowBtn').addEventListener('click', () => openBudgetModal(null));
   document.getElementById('addLinkBtn').addEventListener('click', () => openLinkModal(null));
   document.getElementById('addChecklistCategoryBtn').addEventListener('click', () => openChecklistCategoryModal(null));
@@ -161,7 +128,6 @@ function bindGlobalEvents() {
     copyTextToClipboard(appStore.state.notes, 'Trip notes copied!');
   });
 
-  // Reusable Modal Close Handlers
   document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
   document.getElementById('modalOverlay').addEventListener('click', (e) => {
     if (e.target.id === 'modalOverlay') closeModal();
@@ -204,6 +170,7 @@ function bindGlobalEvents() {
       const dy = e.changedTouches[0].clientY - touchStartY;
       isSingleTouch = false;
 
+      // Only swipe carousel when movement is clearly horizontal
       if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
         setActiveCarouselIndex(appStore.activeCarouselIndex + (dx < 0 ? 1 : -1));
       }
@@ -241,5 +208,4 @@ updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appSto
 renderAll();
 prefetchAllDaysWeather();
 prefetchAllCardPhotos();
-prefetchRoutesForTrip();
 initCloudSync();

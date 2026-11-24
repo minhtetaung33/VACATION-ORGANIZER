@@ -906,7 +906,7 @@ export function confirmDeleteDay(dayId) {
 
 /**
  * ============================================================================
- * SMART ITINERARY STOP MODAL (Time Slots, Duration, Reservation & Fixed Lock)
+ * SMART ITINERARY STOP MODAL (Time Slots, 0-Min Milestone, Reservation & Lock)
  * ============================================================================
  */
 export function openEventModal(dayId, eventId = null, preselectedCategory = null) {
@@ -923,10 +923,14 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
   } else if (day.events.length > 0) {
     const last = day.events[day.events.length - 1];
     normalizeEventSchedule(last);
-    defaultStart = roundUpToSlot(last.startMinutes + last.durationMinutes, TIME_SLOT_STEP);
+    const stepAfterLast = last.durationMinutes > 0 ? last.durationMinutes : TIME_SLOT_STEP;
+    defaultStart = roundUpToSlot(last.startMinutes + stepAfterLast, TIME_SLOT_STEP);
   }
 
-  const defaultDuration = existing?.durationMinutes || 60;
+  // Preserve 0 min cleanly when editing a Point-in-Time stop
+  const hasExistingDur = existing && existing.durationMinutes !== null && existing.durationMinutes !== undefined && Number.isFinite(Number(existing.durationMinutes));
+  const defaultDuration = hasExistingDur ? Number(existing.durationMinutes) : 60;
+
   const defaultRes = existing?.reservationMinutes ?? null;
   const defaultFixed = Boolean(existing?.isFixed || defaultRes !== null);
   const defaultCompleted = Boolean(existing?.completed);
@@ -968,7 +972,7 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
           <div class="flex items-center gap-2.5 min-w-0">
             <span class="w-8 h-8 rounded-xl bg-black/40 border border-white/15 flex items-center justify-center text-orange-300 shrink-0">${ICONS.clock}</span>
             <div class="min-w-0">
-              <div class="text-[10px] font-bold uppercase tracking-widest text-white/55">Scheduled Time Slot</div>
+              <div id="evPreviewLabel" class="text-[10px] font-bold uppercase tracking-widest text-white/55">${defaultDuration === 0 ? 'Point in Time · Milestone' : 'Scheduled Time Slot'}</div>
               <div id="evPreviewWindow" class="text-sm sm:text-base font-bold text-white tabular-nums truncate">${esc(formatTimeWindow(defaultStart, defaultDuration))}</div>
             </div>
           </div>
@@ -1054,7 +1058,8 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
         variant: 'primary',
         onClick: () => {
           const startMinutes = Number(document.getElementById('evStartSlot').value);
-          const durationMinutes = Number(document.getElementById('evDuration').value) || 60;
+          const rawDur = Number(document.getElementById('evDuration').value);
+          const durationMinutes = Number.isFinite(rawDur) && rawDur >= 0 ? rawDur : 60;
           const resRaw = document.getElementById('evResTime').value;
           const reservationMinutes = resRaw === '' ? null : Number(resRaw);
           const isFixed = reservationMinutes !== null ? true : Boolean(document.getElementById('evFixedToggle').checked);
@@ -1128,14 +1133,19 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
   const catSel = document.getElementById('evCat');
   const catBadge = document.getElementById('evCatPreviewBadge');
   const previewWin = document.getElementById('evPreviewWindow');
+  const previewLabel = document.getElementById('evPreviewLabel');
   const previewLock = document.getElementById('evPreviewLockBadge');
 
   function refreshModalPreview() {
     const startVal = Number(startSel.value);
-    const durVal = Number(durSel.value) || 60;
+    const rawDur = Number(durSel.value);
+    const durVal = Number.isFinite(rawDur) && rawDur >= 0 ? rawDur : 60;
     const hasRes = resSel.value !== '';
     const isLocked = hasRes || fixedChk.checked;
 
+    if (previewLabel) {
+      previewLabel.textContent = durVal === 0 ? 'Point in Time · Milestone' : 'Scheduled Time Slot';
+    }
     previewWin.textContent = formatTimeWindow(startVal, durVal);
     previewLock.textContent = hasRes ? 'Reservation · Fixed' : (isLocked ? 'Fixed Time' : 'Flexible');
     previewLock.className = `px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 border ${
@@ -1380,7 +1390,6 @@ export function openCustomCategoriesModal(returnToEventContext = null) {
       btn.addEventListener('click', () => {
         const delId = btn.dataset.delCustomCat;
         appStore.state.customCategories = appStore.state.customCategories.filter((c) => c.id !== delId);
-        // Reset any stops using the deleted category back to 'stop'
         appStore.state.days.forEach((d) => {
           (d.events || []).forEach((ev) => {
             if (ev.category === delId) ev.category = 'stop';

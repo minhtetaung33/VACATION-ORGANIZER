@@ -3,7 +3,7 @@
  * SPATIAL TRIPOS · SMART TIMELINE, RIPPLE SCHEDULER & LIVE TRAVEL ENGINE
  * ============================================================================
  * Handles:
- *  1. Structured 15-minute Time Slots & legacy schedule migration
+ *  1. Structured 15-minute Time Slots, Point-in-Time (0 min) stops & migration
  *  2. Flexible Ripple Auto-Adjustment & Fixed Time / Reservation anchoring
  *  3. Reliable Street-Address Geocoding (Photon + Nominatim + City/ZIP fallback)
  *     & OSRM Road Routing with timeout protection, caching & road-factor fallback
@@ -17,6 +17,7 @@ export const MIN_SLOT_MINUTES = 0; // 12:00 AM
 export const MAX_SLOT_MINUTES = 23 * 60 + 45; // 11:45 PM
 
 export const DURATION_OPTIONS = [
+  { value: 0, label: 'None (Point in time)' },
   { value: 15, label: '15 min' },
   { value: 30, label: '30 min' },
   { value: 45, label: '45 min' },
@@ -192,6 +193,7 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
     return { startMinutes: roundNearestSlot(fallbackStartMins), durationMinutes: 60 };
   }
 
+  // Single timestamp (e.g. "4:00 PM", "By 11:00 AM") -> Point in time (0 min duration)
   if (matches.length === 1) {
     const m1 = matches[0];
     let mer = m1.meridiem;
@@ -199,7 +201,7 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
       mer = m1.hour < 7 ? 'PM' : (fallbackStartMins >= 12 * 60 ? 'PM' : 'AM');
     }
     const start = clampMinutes(to24hMinutes(m1.hour, m1.minute, mer));
-    return { startMinutes: roundNearestSlot(start), durationMinutes: 60 };
+    return { startMinutes: roundNearestSlot(start), durationMinutes: 0 };
   }
 
   // Range: start – end
@@ -231,18 +233,27 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
 }
 
 /**
- * Normalize a single itinerary stop so time slots, reservation locks, and completion flags are consistent
+ * Normalize a single itinerary stop so time slots, 0-min milestones, reservation locks & completion flags are consistent
  */
 export function normalizeEventSchedule(ev, fallbackStartMins = 9 * 60) {
   if (!ev || typeof ev !== 'object') return ev;
 
-  if (!Number.isFinite(Number(ev.startMinutes)) || !Number.isFinite(Number(ev.durationMinutes))) {
+  const hasValidStart = ev.startMinutes !== null && ev.startMinutes !== undefined && ev.startMinutes !== '' && Number.isFinite(Number(ev.startMinutes));
+  const hasValidDur = ev.durationMinutes !== null && ev.durationMinutes !== undefined && ev.durationMinutes !== '' && Number.isFinite(Number(ev.durationMinutes));
+
+  if (!hasValidStart || !hasValidDur) {
     const parsed = parseTimeStringToWindow(ev.time, fallbackStartMins);
-    ev.startMinutes = parsed.startMinutes;
-    ev.durationMinutes = parsed.durationMinutes;
+    ev.startMinutes = hasValidStart ? clampMinutes(ev.startMinutes) : parsed.startMinutes;
+    if (hasValidDur) {
+      const numDur = Number(ev.durationMinutes);
+      ev.durationMinutes = numDur <= 0 ? 0 : Math.max(15, Math.round(numDur / 15) * 15);
+    } else {
+      ev.durationMinutes = parsed.durationMinutes;
+    }
   } else {
     ev.startMinutes = clampMinutes(ev.startMinutes);
-    ev.durationMinutes = Math.max(15, Math.round(Number(ev.durationMinutes) / 15) * 15);
+    const numDur = Number(ev.durationMinutes);
+    ev.durationMinutes = numDur <= 0 ? 0 : Math.max(15, Math.round(numDur / 15) * 15);
   }
 
   if (ev.reservationMinutes !== null && ev.reservationMinutes !== undefined && ev.reservationMinutes !== '') {
@@ -390,7 +401,6 @@ function extractCityFallback(cleanedAddress) {
     .map((p) => p.trim())
     .filter(Boolean);
   if (parts.length >= 2) {
-    // Drop the leading street line, keep "City, CA 91730"
     const remainder = parts.slice(1).join(', ').trim();
     const cityOnly = parts[1].replace(/\b[A-Z]{2}\b/g, '').replace(/\b\d{5}(?:-\d{4})?\b/g, '').trim();
     return { remainder, cityOnly };
@@ -495,7 +505,6 @@ export function getCachedTravelLeg(fromLoc, toLoc) {
     };
   }
 
-  // If both coordinates are already cached, provide instant road estimate while OSRM runs
   const coordA = parseDirectCoords(fromClean) || geoMemoryCache.get(normalizeLocKey(fromClean)) || (!looksLikeStreetAddress(fromClean) ? lookupPresetCoordinates(fromClean) : null);
   const coordB = parseDirectCoords(toClean) || geoMemoryCache.get(normalizeLocKey(toClean)) || (!looksLikeStreetAddress(toClean) ? lookupPresetCoordinates(toClean) : null);
 
@@ -571,7 +580,6 @@ async function geocodeLocation(rawLoc, dayHint = '') {
   const normKey = normalizeLocKey(cleaned);
   if (geoMemoryCache.has(normKey)) return geoMemoryCache.get(normKey);
 
-  // For short non-street place names (e.g., "Palm Desert, CA", "123 Farm"), preset is instant & exact
   if (!looksLikeStreetAddress(cleaned)) {
     const exactPreset = lookupPresetCoordinates(cleaned);
     if (exactPreset && !cleaned.includes(' ')) {
@@ -594,21 +602,17 @@ async function geocodeLocation(rawLoc, dayHint = '') {
       return coord;
     };
 
-    // 1. Photon (Fast, CORS-friendly, handles full street addresses accurately)
     let coord = await queryPhoton(primaryQuery);
     if (coord) return saveCoord(coord);
 
-    // 2. Nominatim (Polite queued backup for exact street addresses & landmarks)
     coord = await queryNominatimPolite(primaryQuery);
     if (coord) return saveCoord(coord);
 
-    // 3. If primary query had dayHint attached, retry bare cleaned text
     if (primaryQuery !== cleaned) {
       coord = await queryPhoton(cleaned);
       if (coord) return saveCoord(coord);
     }
 
-    // 4. City / State / ZIP fallback (if exact house number isn't mapped in OSM yet)
     const { remainder, cityOnly } = extractCityFallback(cleaned);
     if (remainder) {
       coord = await queryPhoton(remainder);
@@ -622,7 +626,6 @@ async function geocodeLocation(rawLoc, dayHint = '') {
       if (coord) return saveCoord(coord);
     }
 
-    // 5. Preset fallback (guaranteed hit for local SoCal cities & landmarks)
     const preset = lookupPresetCoordinates(cleaned);
     if (preset) return saveCoord(preset);
 
@@ -669,7 +672,6 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
       return sameRes;
     }
 
-    // Live OSRM Road Routing with strict timeout
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=false`;
     const data = await fetchJsonWithTimeout(osrmUrl, 5500);
     const route = data?.routes?.[0];
@@ -689,7 +691,6 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
       return resolved;
     }
 
-    // Instant road-factor fallback if OSRM is temporarily unreachable
     const fallback = estimateFallbackLeg(coordA, coordB);
     routeMemoryCache.set(key, fallback);
     saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
@@ -726,7 +727,6 @@ function resolveDayLocationChain(day, prevDayEndLocation = '') {
     return '';
   });
 
-  // Determine this day's ending location (last non-empty effective location, or carry previous day's)
   let endLocation = prevClean;
   for (let i = effectiveLocations.length - 1; i >= 0; i--) {
     if (effectiveLocations[i]) {
@@ -745,7 +745,6 @@ function resolveDayLocationChain(day, prevDayEndLocation = '') {
 
 /**
  * Resolve all consecutive destination pairs across a trip in the background.
- * Handles empty-location gaps AND inherited previous-day start locations.
  */
 export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
   if (!trip || !Array.isArray(trip.days)) return;
@@ -765,7 +764,6 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
           const k = buildRouteCacheKey(lastLoc, loc);
           if (!routeMemoryCache.has(k) && !seenKeys.has(k)) {
             seenKeys.add(k);
-            // Retry previously failed keys when triggered fresh (e.g., user edited a stop)
             failedRouteKeys.delete(k);
             jobs.push({ from: lastLoc, to: loc, hint: dayHint });
           }
@@ -779,7 +777,6 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
 
   if (jobs.length === 0) return;
 
-  // Run sequentially / gently so public geocoders & OSRM respond reliably every time
   for (const job of jobs) {
     await resolveRouteLeg(job.from, job.to, job.hint);
     onUpdate();
@@ -813,7 +810,6 @@ export function rippleFlexibleActivitiesFrom(day, startIndex = 0) {
     const curr = day.events[i];
     const next = day.events[i + 1];
 
-    // Never auto-move Fixed Time or Reservation stops
     if (next.isFixed || next.reservationMinutes !== null) continue;
 
     const travelMins = getTravelMinutesBetweenEvents(curr, next);
@@ -937,7 +933,8 @@ export function duplicateEventInDay(day, eventId, newId) {
   if (idx < 0) return null;
 
   const orig = day.events[idx];
-  const nextStart = roundUpToSlot(orig.startMinutes + orig.durationMinutes, TIME_SLOT_STEP);
+  const stepOffset = orig.durationMinutes > 0 ? orig.durationMinutes : TIME_SLOT_STEP;
+  const nextStart = roundUpToSlot(orig.startMinutes + stepOffset, TIME_SLOT_STEP);
 
   const copy = {
     ...orig,
@@ -1127,8 +1124,6 @@ export function analyzeDayTimeline(day, prevDayEndLocation = '') {
             result.totalTravelMinutes += leg.durationMinutes;
           }
 
-          // Only check tight transit gap when consecutive stops have locations;
-          // if intermediate stops have no location yet, still show total route & time cleanly
           let availableMinutes = null;
           let shortageMinutes = 0;
           let hasWarning = false;
@@ -1159,7 +1154,6 @@ export function analyzeDayTimeline(day, prevDayEndLocation = '') {
       lastLocatedStr = effLoc;
     }
 
-    // Schedule overlap / tight travel warning check
     if (prevEnd !== null) {
       const gap = ev.startMinutes - prevEnd;
       if (gap < 0) {

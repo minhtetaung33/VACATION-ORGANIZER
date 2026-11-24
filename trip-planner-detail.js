@@ -288,6 +288,7 @@ export function renderItinerary() {
                   const warning = dayStats.warningsByEventId.get(ev.id);
                   const isShifted = appStore.justShiftedEventIds.has(ev.id);
                   const isJustDone = appStore.justCompletedEventId === ev.id;
+                  const hasDuration = Number(ev.durationMinutes) > 0;
 
                   const cardStates = [
                     'timeline-card rounded-2xl border p-3 sm:p-4 overflow-hidden',
@@ -366,9 +367,11 @@ export function renderItinerary() {
                                   >${quickTimeSelectOptions}</select>
                                 </label>
 
-                                <span class="px-2 py-0.5 rounded-lg bg-black/30 border border-white/10 text-[10px] font-semibold text-white/60 tabular-nums">
-                                  ${esc(formatDuration(ev.durationMinutes))}
-                                </span>
+                                ${hasDuration ? `
+                                  <span class="px-2 py-0.5 rounded-lg bg-black/30 border border-white/10 text-[10px] font-semibold text-white/60 tabular-nums">
+                                    ${esc(formatDuration(ev.durationMinutes))}
+                                  </span>
+                                ` : ''}
 
                                 ${ev.reservationMinutes !== null ? `
                                   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-400/45 text-[10px] font-bold text-amber-200">

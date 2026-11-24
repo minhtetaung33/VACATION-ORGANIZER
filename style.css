@@ -17,12 +17,6 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-body.is-dragging-stop {
-  user-select: none;
-  -webkit-user-select: none;
-  cursor: grabbing !important;
-}
-
 /* Safe-Area Support for Notched / Dynamic Island Mobile Devices */
 .app-shell {
   padding-left: max(1rem, env(safe-area-inset-left));
@@ -71,198 +65,6 @@ textarea {
   touch-action: pan-y;
 }
 
-/* ==========================================================================
-   SMART TIMELINE DRAG-AND-DROP, AUTO-ADJUST & SCHEDULE ANIMATIONS
-   ========================================================================== */
-
-/* Dedicated Drag Handle (Supports both Desktop Mouse & Mobile Touch) */
-.stop-drag-handle {
-  touch-action: none;
-  cursor: grab;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.stop-drag-handle:active {
-  cursor: grabbing;
-}
-
-/* Stop Card Transitions & Drop Insertion Beams */
-.stop-card-wrap {
-  position: relative;
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
-}
-
-.stop-card-wrap.is-dragging-source {
-  opacity: 0.28;
-  transform: scale(0.98);
-}
-
-.stop-card-wrap.is-dragging-source .stop-card-surface {
-  border-style: dashed !important;
-  border-color: rgba(56, 189, 248, 0.55) !important;
-  background: rgba(56, 189, 248, 0.06) !important;
-}
-
-/* Neon Drop Indicator Line Above / Below Target Stop */
-.stop-card-wrap.drop-before::before,
-.stop-card-wrap.drop-after::after {
-  content: "";
-  position: absolute;
-  left: 0.75rem;
-  right: 0.25rem;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #fb923c 0%, #38bdf8 60%, #a5f3fc 100%);
-  box-shadow: 0 0 14px rgba(56, 189, 248, 0.85), 0 0 6px rgba(251, 146, 60, 0.75);
-  z-index: 30;
-  pointer-events: none;
-  animation: dropLinePulse 1s ease-in-out infinite;
-}
-
-.stop-card-wrap.drop-before::before {
-  top: -7px;
-}
-
-.stop-card-wrap.drop-after::after {
-  bottom: -7px;
-}
-
-/* Floating Frosted-Glass Ghost Card Following Pointer */
-.drag-ghost {
-  position: fixed;
-  z-index: 9999;
-  pointer-events: none;
-  border-radius: 1.15rem;
-  background: rgba(20, 24, 36, 0.92);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  border: 1.5px solid rgba(125, 211, 252, 0.7);
-  box-shadow:
-    0 24px 55px rgba(0, 0, 0, 0.65),
-    0 0 0 1px rgba(251, 146, 60, 0.25),
-    0 0 28px rgba(56, 189, 248, 0.28);
-  transform: translate3d(0, 0, 0) rotate(1.4deg) scale(1.03);
-  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), opacity 140ms ease;
-  will-change: left, top, transform;
-}
-
-/* Sticky Cross-Day Drop Dock */
-.cross-day-dock {
-  animation: dockSlideIn 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.day-drop-chip {
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-              background-color 180ms ease,
-              border-color 180ms ease,
-              box-shadow 180ms ease;
-}
-
-.day-drop-chip.is-drop-target {
-  transform: translateY(-2px) scale(1.05);
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.32), rgba(56, 189, 248, 0.34)) !important;
-  border-color: rgba(125, 211, 252, 0.85) !important;
-  box-shadow: 0 0 22px rgba(56, 189, 248, 0.4);
-  color: #ffffff !important;
-}
-
-/* Whole-Day Drop Highlight in All Days View */
-.day-article-drop.is-day-drop-hover {
-  border-color: rgba(125, 211, 252, 0.72) !important;
-  box-shadow:
-    0 24px 60px rgba(0, 0, 0, 0.5),
-    0 0 0 2px rgba(56, 189, 248, 0.32),
-    0 0 32px rgba(56, 189, 248, 0.18) !important;
-}
-
-/* Time Slots View Drop Zones */
-.time-slot-zone {
-  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
-}
-
-.time-slot-zone.is-slot-hover {
-  background: linear-gradient(90deg, rgba(251, 146, 60, 0.18), rgba(56, 189, 248, 0.22)) !important;
-  border-color: rgba(125, 211, 252, 0.8) !important;
-  box-shadow: 0 0 20px rgba(56, 189, 248, 0.28);
-  transform: scale(1.01);
-}
-
-/* Ripple Auto-Adjust Time Shimmer Flash */
-.time-badge.is-time-rippled {
-  animation: timeRippleFlash 1.15s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Stop Card Entrance & Reorder Settle */
-.stop-card-wrap.is-just-dropped {
-  animation: dropSettle 420ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Completion Check Burst */
-.stop-check-btn.is-just-completed {
-  animation: checkBurst 380ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Schedule Conflict Warning Banner Pulse */
-.conflict-banner {
-  animation: conflictPulse 2.6s ease-in-out infinite;
-}
-
-/* Transit Connector Pill Hover */
-.transit-connector-pill {
-  transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
-}
-
-.transit-connector-pill:hover {
-  transform: translateX(2px);
-}
-
-@keyframes dropLinePulse {
-  0%, 100% { opacity: 0.92; transform: scaleX(0.99); }
-  50%      { opacity: 1; transform: scaleX(1.01); }
-}
-
-@keyframes dockSlideIn {
-  0%   { opacity: 0; transform: translateY(-10px) scale(0.97); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes timeRippleFlash {
-  0% {
-    background-color: rgba(56, 189, 248, 0.45);
-    color: #ffffff;
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.75);
-    transform: scale(1.08);
-  }
-  55% {
-    background-color: rgba(251, 146, 60, 0.32);
-    color: #fff7ed;
-    box-shadow: 0 0 12px rgba(251, 146, 60, 0.45);
-    transform: scale(1.02);
-  }
-  100% {
-    background-color: transparent;
-    box-shadow: none;
-    transform: scale(1);
-  }
-}
-
-@keyframes dropSettle {
-  0%   { transform: scale(1.025); box-shadow: 0 0 28px rgba(56, 189, 248, 0.35); }
-  100% { transform: scale(1); box-shadow: none; }
-}
-
-@keyframes checkBurst {
-  0%   { transform: scale(0.8); }
-  50%  { transform: scale(1.26); box-shadow: 0 0 16px rgba(52, 211, 153, 0.7); }
-  100% { transform: scale(1); }
-}
-
-@keyframes conflictPulse {
-  0%, 100% { border-color: rgba(251, 113, 133, 0.38); }
-  50%      { border-color: rgba(251, 146, 60, 0.78); }
-}
-
 /* Hide all scrollbars cleanly while keeping smooth scrolling enabled */
 html, body, * {
   scrollbar-width: none;
@@ -277,7 +79,9 @@ body::-webkit-scrollbar,
   height: 0;
 }
 
-/* Full-card animated weather illustration */
+/* ============================================================================
+   FULL-CARD ANIMATED WEATHER ILLUSTRATION
+   ============================================================================ */
 .weather-scene {
   overflow: hidden;
   isolation: isolate;
@@ -508,13 +312,367 @@ body::-webkit-scrollbar,
   93%, 94%           { opacity: 0.7; }
 }
 
+/* ============================================================================
+   INTERACTIVE DRAG & DROP TIMELINE, TRANSIT CONNECTORS & LIVE ANIMATIONS
+   ============================================================================ */
+
+/* Drag Handle */
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Timeline Activity Card States */
+.timeline-card {
+  position: relative;
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms ease,
+    background-color 240ms ease,
+    box-shadow 260ms ease,
+    opacity 220ms ease;
+}
+
+.timeline-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.65);
+}
+
+.timeline-card.is-dragging {
+  opacity: 0.42;
+  transform: scale(0.985) rotate(-0.6deg);
+  border-color: rgba(56, 189, 248, 0.75) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.35), 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Glowing Drop Insertion Lines */
+.timeline-card.is-drop-before::before,
+.timeline-card.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fb923c, #38bdf8, #fb923c);
+  background-size: 200% 100%;
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.85), 0 0 24px rgba(251, 146, 60, 0.45);
+  animation: dropBeamFlow 1.2s linear infinite;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.timeline-card.is-drop-before::before {
+  top: -7px;
+}
+
+.timeline-card.is-drop-after::after {
+  bottom: -7px;
+}
+
+.timeline-card.is-fixed {
+  border-color: rgba(251, 191, 36, 0.32);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.06), rgba(255, 255, 255, 0.025));
+}
+
+.timeline-card.is-completed {
+  border-color: rgba(52, 211, 153, 0.28);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.timeline-card.has-warning {
+  border-color: rgba(251, 113, 133, 0.48);
+  box-shadow: 0 0 0 1px rgba(251, 113, 133, 0.2), 0 10px 28px -12px rgba(244, 63, 94, 0.45);
+}
+
+/* Auto-Shifted Ripple Highlight Flash */
+.timeline-card.just-shifted {
+  animation: rippleFlash 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Completion Celebration Pop */
+.timeline-card.just-completed {
+  animation: completeCelebrate 650ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Cross-Day Drop Dock & Day Card Drop Targets */
+.cross-day-dock {
+  transition: all 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cross-day-dock.is-active-drag {
+  border-color: rgba(56, 189, 248, 0.55) !important;
+  background: linear-gradient(90deg, rgba(251, 146, 60, 0.14), rgba(56, 189, 248, 0.16)) !important;
+  box-shadow: 0 0 28px rgba(56, 189, 248, 0.22);
+}
+
+.day-drop-zone {
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms ease,
+    background-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.day-drop-zone.is-drag-over {
+  transform: scale(1.03);
+  border-color: rgba(56, 189, 248, 0.9) !important;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(251, 146, 60, 0.22)) !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4), 0 12px 30px rgba(56, 189, 248, 0.25);
+}
+
+/* Quick Time-Slot Drop Pills (Drag an activity onto any time slot!) */
+.time-slot-drop-pill {
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.time-slot-drop-pill.is-drag-over {
+  transform: translateY(-2px) scale(1.09);
+  border-color: rgba(251, 146, 60, 0.9) !important;
+  background: linear-gradient(90deg, rgba(251, 146, 60, 0.42), rgba(56, 189, 248, 0.42)) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 18px rgba(251, 146, 60, 0.45);
+}
+
+/* Animated Transit Route Connector Between Stops */
+.transit-connector {
+  position: relative;
+}
+
+.transit-road-dash {
+  width: 2px;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(56, 189, 248, 0.85) 0px,
+    rgba(56, 189, 248, 0.85) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  background-size: 2px 16px;
+  animation: roadDashFlow 1.1s linear infinite;
+}
+
+.transit-connector--warning .transit-road-dash {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(251, 113, 133, 0.95) 0px,
+    rgba(251, 113, 133, 0.95) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+
+.warning-pulse {
+  animation: warningBeacon 2s ease-in-out infinite;
+}
+
+/* ============================================================================
+   LIVE ACTIVITY CATEGORY ANIMATIONS (Exciting, Smooth & Category-Aware)
+   ============================================================================ */
+
+.cat-icon-badge {
+  position: relative;
+  overflow: visible;
+  isolation: isolate;
+}
+
+/* 1. Drive / Transit: Smooth highway cruise bounce + subtle motion streak */
+.cat-anim-glide svg {
+  animation: catDriveCruise 2.4s ease-in-out infinite;
+}
+.cat-anim-glide::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(110deg, transparent 25%, rgba(56, 189, 248, 0.32) 50%, transparent 75%);
+  background-size: 220% 100%;
+  animation: catSpeedSweep 2.6s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* 2. Hotel / Rest: Calm floating sanctuary glow */
+.cat-anim-float svg {
+  animation: catRestFloat 3.6s ease-in-out infinite;
+}
+
+/* 3. Dining / Food: Warm appetizing glow + rising steam shimmer */
+.cat-anim-steam svg {
+  animation: catFoodSizzle 3s ease-in-out infinite;
+}
+.cat-anim-steam::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 14px;
+  height: 10px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.65) 0%, transparent 72%);
+  filter: blur(2px);
+  animation: catSteamRise 2.2s ease-out infinite;
+  pointer-events: none;
+}
+
+/* 4. Highlight Event: Twinkling festival starlight & warm aura */
+.cat-anim-sparkle svg {
+  animation: catSparkleTwinkle 2.6s ease-in-out infinite;
+}
+.cat-anim-sparkle::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 1px solid rgba(251, 146, 60, 0.45);
+  animation: catAuraRing 2.6s ease-out infinite;
+  pointer-events: none;
+}
+
+/* 5. Explore / Sightseeing: Gentle live compass needle sway */
+.cat-anim-compass svg {
+  animation: catCompassSway 3.4s ease-in-out infinite;
+}
+
+/* 6. General Stop / Map Pin: Radar pulse ripple */
+.cat-anim-radar::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 1.5px solid currentColor;
+  opacity: 0;
+  animation: catRadarPulse 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  pointer-events: none;
+}
+
+/* 7. Custom Spin: Slow cosmic orbit */
+.cat-anim-spin svg {
+  animation: catSlowOrbit 8s linear infinite;
+}
+
+/* 8. Custom Bounce: Energetic adventure hop */
+.cat-anim-bounce svg {
+  animation: catJoyBounce 2s ease-in-out infinite;
+}
+
+/* Ambient Card Top Edge Glow (Reveals on Hover) */
+.timeline-card-ambient {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1.5px;
+  opacity: 0.45;
+  transition: opacity 280ms ease;
+  pointer-events: none;
+}
+
+.timeline-card:hover .timeline-card-ambient {
+  opacity: 1;
+}
+
+/* Keyframes for Drag, Ripple, Transit & Live Category Animations */
+@keyframes dropBeamFlow {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+@keyframes rippleFlash {
+  0%   { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.75); border-color: rgba(56, 189, 248, 0.9); background-color: rgba(56, 189, 248, 0.16); }
+  50%  { box-shadow: 0 0 26px 2px rgba(56, 189, 248, 0.32); }
+  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
+}
+
+@keyframes completeCelebrate {
+  0%   { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+  45%  { transform: scale(1.015); box-shadow: 0 0 26px 4px rgba(52, 211, 153, 0.35); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
+@keyframes roadDashFlow {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 16px; }
+}
+
+@keyframes warningBeacon {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 113, 133, 0.42); }
+  50%      { box-shadow: 0 0 16px 2px rgba(251, 113, 133, 0.25); }
+}
+
+@keyframes catDriveCruise {
+  0%, 100% { transform: translate(0px, 0px); }
+  35%      { transform: translate(1.8px, -0.8px); }
+  65%      { transform: translate(-1px, 0.6px); }
+}
+
+@keyframes catSpeedSweep {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -220% 0; }
+}
+
+@keyframes catRestFloat {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50%      { transform: translateY(-2px) scale(1.04); }
+}
+
+@keyframes catFoodSizzle {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+
+@keyframes catSteamRise {
+  0%   { transform: translate(-50%, 3px) scale(0.65); opacity: 0; }
+  40%  { opacity: 0.85; }
+  100% { transform: translate(-50%, -7px) scale(1.3); opacity: 0; }
+}
+
+@keyframes catSparkleTwinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+  50%      { transform: scale(1.15) rotate(10deg); filter: brightness(1.3); }
+}
+
+@keyframes catAuraRing {
+  0%   { transform: scale(0.92); opacity: 0.65; }
+  100% { transform: scale(1.26); opacity: 0; }
+}
+
+@keyframes catCompassSway {
+  0%, 100% { transform: rotate(-10deg); }
+  50%      { transform: rotate(12deg); }
+}
+
+@keyframes catRadarPulse {
+  0%   { transform: scale(0.92); opacity: 0.55; }
+  100% { transform: scale(1.38); opacity: 0; }
+}
+
+@keyframes catSlowOrbit {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes catJoyBounce {
+  0%, 100% { transform: translateY(0px); }
+  45%      { transform: translateY(-3px); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .weather-scene *,
   .weather-scene::before,
-  .stop-card-wrap,
-  .cross-day-dock,
-  .time-badge,
-  .conflict-banner {
+  .cat-icon-badge,
+  .cat-icon-badge *,
+  .cat-icon-badge::before,
+  .cat-icon-badge::after,
+  .transit-road-dash,
+  .warning-pulse,
+  .timeline-card.just-shifted,
+  .timeline-card.just-completed {
     animation: none !important;
   }
 }

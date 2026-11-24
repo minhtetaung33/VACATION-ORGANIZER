@@ -1,8 +1,10 @@
 import {
   ICONS,
   LINK_ICON_META,
+  CATEGORY_META,
   CUSTOM_CATEGORY_THEMES,
-  CUSTOM_CATEGORY_ICON_KEYS,
+  CUSTOM_CATEGORY_ICON_OPTIONS,
+  CUSTOM_CATEGORY_ANIM_OPTIONS,
   BUDGET_CATEGORY_META,
   appStore,
   uid,
@@ -11,17 +13,6 @@ import {
   getCategoryMeta,
   inferBudgetCategory,
   getItemFinalCost,
-  formatTimeRange,
-  formatDurationLabel,
-  formatMinutesTo12h,
-  formatMinutesToInput,
-  parseInputTimeToMinutes,
-  ensureEventTimeFields,
-  markRippledEvents,
-  getLegTravelInfo,
-  prefetchRoutesForDay,
-  prefetchRoutesForTrip,
-  rippleAdjustDay,
   showToast,
   openModal,
   closeModal,
@@ -36,10 +27,28 @@ import {
   scheduleCloudSave,
   syncLiveWeatherForActiveDay,
   prefetchAllDaysWeather,
+  refreshTripTravelRoutes,
   renderHero,
   renderForecastStrip,
   renderCarousel
 } from './trip-planner.js';
+
+import {
+  DURATION_OPTIONS,
+  TIME_SLOT_STEP,
+  getTimeSlotOptions,
+  formatMinutesTo12h,
+  formatTimeWindow,
+  roundUpToSlot,
+  normalizeEventSchedule,
+  rippleFlexibleActivitiesFrom,
+  reorderEventInDay,
+  moveEventToTimeSlot,
+  moveEventAcrossDays,
+  duplicateEventInDay,
+  copyEventToDay,
+  autoFitDaySchedule
+} from './trip-timeline-engine.js';
 
 import {
   renderItinerary,
@@ -49,6 +58,34 @@ import {
   renderLinks,
   renderAll
 } from './trip-planner-detail.js';
+
+/**
+ * Flash-highlight helper for activities whose time slots auto-adjusted
+ */
+let shiftFlashTimer = null;
+function markShiftedEvents(ids = []) {
+  appStore.justShiftedEventIds = new Set(ids.filter(Boolean));
+  clearTimeout(shiftFlashTimer);
+  shiftFlashTimer = setTimeout(() => {
+    appStore.justShiftedEventIds.clear();
+  }, 950);
+}
+
+function captureStartSnapshot(day) {
+  const snap = new Map();
+  (day?.events || []).forEach((ev) => snap.set(ev.id, ev.startMinutes));
+  return snap;
+}
+
+function getChangedEventIds(day, snapshot, extraIds = []) {
+  const changed = [...extraIds];
+  (day?.events || []).forEach((ev) => {
+    if (snapshot.has(ev.id) && snapshot.get(ev.id) !== ev.startMinutes) {
+      changed.push(ev.id);
+    }
+  });
+  return changed;
+}
 
 /**
  * Edit Current Trip Overview OR Create a Brand-New Trip
@@ -485,7 +522,7 @@ export function openBudgetModal(itemId = null) {
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-white/60 mb-1">Estimated Cost ($)</label>
-            <input id="bEst" type="number" inputmode="decimal" min="0" step="0.01" value="${existing ? (Number(existing.estimated) || 0) : 100}" class="${inp}" />
+            <input id="bEst" type="number" min="0" step="0.01" value="${existing ? (Number(existing.estimated) || 0) : 100}" class="${inp}" />
           </div>
           <div>
             <label class="block text-xs font-semibold text-white/60 mb-1">General Note <span class="text-white/40 font-normal">(Optional)</span></label>
@@ -514,7 +551,7 @@ export function openBudgetModal(itemId = null) {
             <input id="bNewEntryDetail" type="text" placeholder="${esc(selectedMeta.placeholder)}" class="flex-1 min-w-0 rounded-xl border border-white/15 bg-black/45 px-3 py-2 text-xs text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40" />
             <div class="relative w-24 shrink-0">
               <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-sky-300/70">$</span>
-              <input id="bNewEntryAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" class="w-full rounded-xl border border-sky-400/25 bg-sky-500/10 pl-6 pr-2 py-2 text-xs font-semibold text-right text-sky-100 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 tabular-nums" />
+              <input id="bNewEntryAmount" type="number" min="0" step="0.01" placeholder="0.00" class="w-full rounded-xl border border-sky-400/25 bg-sky-500/10 pl-6 pr-2 py-2 text-xs font-semibold text-right text-sky-100 placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-sky-400/50 tabular-nums" />
             </div>
             <button id="bAddEntryBtn" type="button" class="px-3 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0">+ Add</button>
           </div>
@@ -806,6 +843,7 @@ export function openDayModal(dayId = null) {
           renderCarousel();
           renderItinerary();
           syncLiveWeatherForActiveDay();
+          refreshTripTravelRoutes();
           scheduleCloudSave();
         }
       }
@@ -867,135 +905,146 @@ export function confirmDeleteDay(dayId) {
 }
 
 /**
- * Upgraded Add or Edit Itinerary Stop Modal
- * (Start Time, Duration Chips, Fixed Time Lock, Custom Categories & Travel Mode)
+ * ============================================================================
+ * SMART ITINERARY STOP MODAL (Time Slots, Duration, Reservation & Fixed Lock)
+ * ============================================================================
  */
-export function openEventModal(dayId, eventId = null, presetStartMin = null) {
+export function openEventModal(dayId, eventId = null, preselectedCategory = null) {
   const day = appStore.state.days.find((d) => d.id === dayId);
   if (!day) return;
-  const existing = eventId ? day.events.find((e) => e.id === eventId) : null;
-  if (existing) ensureEventTimeFields(existing);
 
-  // Suggest smart default start time if adding a new stop
-  let defaultStartMin = 9 * 60;
+  const existing = eventId ? day.events.find((e) => e.id === eventId) : null;
+  if (existing) normalizeEventSchedule(existing);
+
+  // Suggest smart default start slot when adding a new stop
+  let defaultStart = 9 * 60;
   if (existing) {
-    defaultStartMin = existing.startMin;
-  } else if (Number.isFinite(presetStartMin)) {
-    defaultStartMin = presetStartMin;
+    defaultStart = existing.startMinutes;
   } else if (day.events.length > 0) {
     const last = day.events[day.events.length - 1];
-    ensureEventTimeFields(last);
-    defaultStartMin = Math.min(22 * 60 + 30, last.startMin + last.durationMin + 15);
+    normalizeEventSchedule(last);
+    defaultStart = roundUpToSlot(last.startMinutes + last.durationMinutes, TIME_SLOT_STEP);
   }
 
-  let currentDuration = existing ? existing.durationMin : 60;
-  let isFixed = existing ? Boolean(existing.fixedTime) : false;
-  let travelMode = existing?.travelMode === 'walk' ? 'walk' : 'drive';
+  const defaultDuration = existing?.durationMinutes || 60;
+  const defaultRes = existing?.reservationMinutes ?? null;
+  const defaultFixed = Boolean(existing?.isFixed || defaultRes !== null);
+  const defaultCompleted = Boolean(existing?.completed);
+  const selectedCat = preselectedCategory || existing?.category || 'explore';
 
-  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40';
-  const allCats = getAllCategories();
-  const selectedCat = existing?.category && allCats[existing.category] ? existing.category : 'stop';
-  const catOptions = Object.entries(allCats)
-    .map(([k, v]) => `<option value="${esc(k)}" class="bg-slate-900" ${selectedCat === k ? 'selected' : ''}>${esc(v.label)}${v.builtin ? '' : ' ★'}</option>`)
+  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
+
+  const timeSlots = getTimeSlotOptions();
+  const startOptionsHtml = timeSlots
+    .map((s) => `<option value="${s.value}" class="bg-slate-900" ${s.value === defaultStart ? 'selected' : ''}>${esc(s.label)}</option>`)
     .join('');
 
-  const durPresets = [15, 30, 45, 60, 90, 120, 180];
+  const resOptionsHtml =
+    `<option value="" class="bg-slate-900" ${defaultRes === null ? 'selected' : ''}>None (Flexible or Manual)</option>` +
+    timeSlots
+      .map((s) => `<option value="${s.value}" class="bg-slate-900" ${s.value === defaultRes ? 'selected' : ''}>${esc(s.label)}</option>`)
+      .join('');
+
+  const durValues = new Set(DURATION_OPTIONS.map((d) => d.value));
+  const mergedDurations = durValues.has(defaultDuration)
+    ? DURATION_OPTIONS
+    : [...DURATION_OPTIONS, { value: defaultDuration, label: `${defaultDuration} min` }].sort((a, b) => a.value - b.value);
+
+  const durationOptionsHtml = mergedDurations
+    .map((d) => `<option value="${d.value}" class="bg-slate-900" ${d.value === defaultDuration ? 'selected' : ''}>${esc(d.label)}</option>`)
+    .join('');
+
+  const allCategories = getAllCategories();
+  const categoryOptionsHtml = Object.entries(allCategories)
+    .map(([k, v]) => `<option value="${esc(k)}" class="bg-slate-900" ${selectedCat === k ? 'selected' : ''}>${esc(v.label)}${v.isCustom ? ' ★' : ''}</option>`)
+    .join('');
 
   openModal({
     title: existing ? 'Edit Itinerary Stop' : 'Add Itinerary Stop',
     bodyHtml: `
       <div class="space-y-4">
-        <!-- Smart Time Window & Live Preview -->
-        <div class="rounded-2xl border border-white/12 bg-black/35 p-3.5 space-y-3">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="text-[10px] font-bold uppercase tracking-widest text-sky-300">Schedule Timing</span>
-            <span id="evTimePreview" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 border border-orange-400/35 text-orange-200 tabular-nums">
-              ${esc(formatTimeRange(defaultStartMin, currentDuration))} (${formatDurationLabel(currentDuration)})
-            </span>
-          </div>
-
-          <div class="grid grid-cols-2 gap-2.5">
-            <div>
-              <label class="block text-xs font-semibold text-white/60 mb-1">Start Time</label>
-              <input id="evStartTime" type="time" class="${inp}" value="${formatMinutesToInput(defaultStartMin)}" />
-            </div>
-            <div>
-              <label class="block text-xs font-semibold text-white/60 mb-1">Duration (minutes)</label>
-              <input id="evDuration" type="number" inputmode="numeric" min="10" max="720" step="5" class="${inp} tabular-nums" value="${currentDuration}" />
+        <!-- Live Formatted Time Window Preview -->
+        <div class="rounded-2xl bg-gradient-to-r from-orange-500/15 via-sky-500/12 to-indigo-500/15 border border-white/15 px-4 py-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="w-8 h-8 rounded-xl bg-black/40 border border-white/15 flex items-center justify-center text-orange-300 shrink-0">${ICONS.clock}</span>
+            <div class="min-w-0">
+              <div class="text-[10px] font-bold uppercase tracking-widest text-white/55">Scheduled Time Slot</div>
+              <div id="evPreviewWindow" class="text-sm sm:text-base font-bold text-white tabular-nums truncate">${esc(formatTimeWindow(defaultStart, defaultDuration))}</div>
             </div>
           </div>
-
-          <!-- Quick Duration Chips -->
-          <div class="flex flex-wrap items-center gap-1.5">
-            ${durPresets.map((m) => `
-              <button
-                type="button"
-                data-dur-chip="${m}"
-                class="px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                  currentDuration === m
-                    ? 'bg-sky-500/25 border-sky-400/50 text-sky-200'
-                    : 'bg-white/[0.05] hover:bg-white/15 border-white/10 text-white/65 hover:text-white'
-                }"
-              >${formatDurationLabel(m)}</button>
-            `).join('')}
-          </div>
-
-          <!-- Fixed Time Lock Toggle -->
-          <button
-            id="evFixedToggleBtn"
-            type="button"
-            class="w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
-              isFixed
-                ? 'bg-amber-500/15 border-amber-400/45 text-amber-100'
-                : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-white/80'
-            }"
-          >
-            <div class="flex items-center gap-2.5 min-w-0">
-              <span id="evFixedIcon" class="${isFixed ? 'text-amber-300' : 'text-white/50'} shrink-0">${isFixed ? ICONS.lock : ICONS.unlock}</span>
-              <div class="min-w-0">
-                <div id="evFixedTitle" class="text-xs font-semibold">${isFixed ? 'Fixed Time (Locked)' : 'Flexible Time (Auto-Adjusts)'}</div>
-                <div class="text-[11px] text-white/50">Lock reservations or timed tickets so they never shift automatically.</div>
-              </div>
-            </div>
-            <span id="evFixedPill" class="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-              isFixed ? 'bg-amber-400/25 text-amber-200' : 'bg-white/10 text-white/55'
-            }">${isFixed ? 'LOCKED' : 'FLEX'}</span>
-          </button>
+          <span id="evPreviewLockBadge" class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 border ${
+            defaultFixed
+              ? 'bg-amber-500/20 border-amber-400/45 text-amber-200'
+              : 'bg-sky-500/15 border-sky-400/30 text-sky-200'
+          }">${defaultRes !== null ? 'Reservation · Fixed' : (defaultFixed ? 'Fixed Time' : 'Flexible')}</span>
         </div>
 
-        <!-- Category & Travel Mode -->
+        <!-- Start Time Slot & Duration Pickers -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="block text-xs font-semibold text-white/60">Category</label>
-              <button id="evManageCatsLink" type="button" class="text-[11px] font-semibold text-sky-300 hover:text-sky-200 cursor-pointer">+ Custom</button>
-            </div>
-            <select id="evCat" class="${inp}">${catOptions}</select>
+            <label class="block text-xs font-semibold text-white/65 mb-1">Start Time Slot</label>
+            <select id="evStartSlot" class="${inp} tabular-nums">${startOptionsHtml}</select>
           </div>
           <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Travel Mode to Stop</label>
-            <div class="grid grid-cols-2 gap-2">
-              <button type="button" data-ev-mode="drive" class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                travelMode === 'drive' ? 'bg-sky-500/25 border-sky-400/50 text-sky-100' : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-              }">${ICONS.drive}<span>Drive</span></button>
-              <button type="button" data-ev-mode="walk" class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-                travelMode === 'walk' ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-100' : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-              }">${ICONS.walk}<span>Walk</span></button>
-            </div>
+            <label class="block text-xs font-semibold text-white/65 mb-1">Duration</label>
+            <select id="evDuration" class="${inp}">${durationOptionsHtml}</select>
           </div>
         </div>
 
-        <!-- Location -->
+        <!-- Reservation / Appointment Time & Fixed Time Lock Card -->
+        <div class="rounded-2xl border border-amber-400/25 bg-amber-500/[0.06] p-3.5 space-y-3">
+          <div class="flex items-center gap-2 text-xs font-semibold text-amber-200">
+            <span>${ICONS.calendarClock}</span>
+            <span>Reservation / Appointment Time &amp; Lock</span>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-medium text-white/65 mb-1">Reservation or Appointment Time <span class="text-white/40">(Automatically locks as Fixed Time)</span></label>
+            <select id="evResTime" class="${inp} border-amber-400/30 tabular-nums">${resOptionsHtml}</select>
+          </div>
+
+          <label class="flex items-start gap-2.5 cursor-pointer select-none pt-0.5">
+            <input id="evFixedToggle" type="checkbox" ${defaultFixed ? 'checked' : ''} class="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer" />
+            <div class="text-xs leading-snug">
+              <span class="font-semibold text-white flex items-center gap-1.5">
+                <span class="text-amber-300">${ICONS.lock}</span>
+                <span>Mark as Fixed Time</span>
+              </span>
+              <p class="text-[11px] text-white/55 mt-0.5">Prevents this activity from automatically shifting when earlier stops move.</p>
+            </div>
+          </label>
+        </div>
+
+        <!-- Category Picker + Quick Custom Category Trigger -->
         <div>
-          <label class="block text-xs font-semibold text-sky-300/90 mb-1">Location <span class="text-white/40 font-normal">(Maps Link + Auto Travel Time &amp; Distance)</span></label>
-          <input id="evLocation" placeholder="e.g. The Mission Inn, Riverside, CA or paste a Maps link" class="${inp} border-sky-400/25" value="${esc(existing ? (existing.location || '') : '')}" />
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <label class="block text-xs font-semibold text-white/65">Activity Category &amp; Live Animation</label>
+            <button id="evQuickNewCatBtn" type="button" class="text-[11px] font-semibold text-sky-300 hover:text-sky-200 transition-colors cursor-pointer">+ Create Custom</button>
+          </div>
+          <div class="flex items-center gap-2.5">
+            <span id="evCatPreviewBadge" class="cat-icon-badge w-10 h-10 rounded-xl border flex items-center justify-center shrink-0"></span>
+            <select id="evCat" class="${inp} flex-1">${categoryOptionsHtml}</select>
+          </div>
+        </div>
+
+        <!-- Location Input (Drives Live Travel Time & Distance) -->
+        <div>
+          <label class="block text-xs font-semibold text-sky-300/90 mb-1">Destination / Location <span class="text-white/40 font-normal">(Auto-calculates travel time, distance &amp; Maps)</span></label>
+          <input id="evLocation" placeholder="e.g. The Mission Inn, Riverside, CA or Peaks Restaurant, Palm Springs" class="${inp} border-sky-400/25" value="${esc(existing ? (existing.location || '') : '')}" />
         </div>
 
         <!-- Activity Details -->
         <div>
-          <label class="block text-xs font-semibold text-white/60 mb-1">Activity Details</label>
-          <textarea id="evText" rows="3" placeholder="Describe the stop, restaurant, reservation, or activity..." class="${inp}">${esc(existing ? existing.text : '')}</textarea>
+          <label class="block text-xs font-semibold text-white/65 mb-1">Activity Details</label>
+          <textarea id="evText" rows="3" placeholder="Describe the stop, restaurant, reservation confirmation, or notes..." class="${inp}">${esc(existing ? existing.text : '')}</textarea>
         </div>
+
+        ${existing ? `
+          <label class="flex items-center gap-2.5 cursor-pointer select-none pt-1">
+            <input id="evCompletedToggle" type="checkbox" ${defaultCompleted ? 'checked' : ''} class="w-4 h-4 rounded accent-emerald-400 cursor-pointer" />
+            <span class="text-xs font-medium text-emerald-200">Mark this activity as completed</span>
+          </label>
+        ` : ''}
       </div>
     `,
     footerButtons: [
@@ -1004,561 +1053,341 @@ export function openEventModal(dayId, eventId = null, presetStartMin = null) {
         label: existing ? 'Save Stop' : 'Add Stop',
         variant: 'primary',
         onClick: () => {
-          const text = document.getElementById('evText').value.trim();
-          if (!text) return showToast('Please enter activity details', 'error');
-
-          const startMin = parseInputTimeToMinutes(document.getElementById('evStartTime').value, defaultStartMin);
-          const durationMin = Math.max(10, Math.min(720, Math.round(Number(document.getElementById('evDuration').value) || 60)));
-          const time = formatTimeRange(startMin, durationMin);
+          const startMinutes = Number(document.getElementById('evStartSlot').value);
+          const durationMinutes = Number(document.getElementById('evDuration').value) || 60;
+          const resRaw = document.getElementById('evResTime').value;
+          const reservationMinutes = resRaw === '' ? null : Number(resRaw);
+          const isFixed = reservationMinutes !== null ? true : Boolean(document.getElementById('evFixedToggle').checked);
+          const finalStart = reservationMinutes !== null ? reservationMinutes : startMinutes;
           const category = document.getElementById('evCat').value;
           const location = document.getElementById('evLocation').value.trim();
+          const text = document.getElementById('evText').value.trim();
+          const completed = existing ? Boolean(document.getElementById('evCompletedToggle')?.checked) : false;
 
-          let targetIdx = -1;
-          let targetId = '';
+          if (!text) return showToast('Please enter activity details', 'error');
+
+          const snapshot = captureStartSnapshot(day);
+          const formattedTime = formatTimeWindow(finalStart, durationMinutes);
+          let targetId = existing?.id;
 
           if (existing) {
-            const locChanged = (existing.location || '').trim() !== location;
-            const modeChanged = (existing.travelMode || 'drive') !== travelMode;
-            existing.startMin = startMin;
-            existing.durationMin = durationMin;
-            existing.time = time;
-            existing.fixedTime = isFixed;
+            existing.startMinutes = finalStart;
+            existing.durationMinutes = durationMinutes;
+            existing.time = formattedTime;
+            existing.reservationMinutes = reservationMinutes;
+            existing.isFixed = isFixed;
             existing.category = category;
             existing.location = location;
-            existing.travelMode = travelMode;
-            if (locChanged || modeChanged) {
-              existing.travelFromPrevMin = null;
-              existing.travelFromPrevMiles = null;
-            }
-            targetIdx = day.events.findIndex((e) => e.id === existing.id);
-            targetId = existing.id;
-            showToast('Stop updated');
+            existing.text = text;
+            existing.completed = completed;
           } else {
-            const newEv = {
-              id: uid('ev'),
-              time,
-              startMin,
-              durationMin,
-              fixedTime: isFixed,
+            targetId = uid('ev');
+            day.events.push({
+              id: targetId,
+              time: formattedTime,
+              startMinutes: finalStart,
+              durationMinutes,
+              reservationMinutes,
+              isFixed,
               completed: false,
               category,
               location,
-              travelMode,
-              travelFromPrevMin: null,
-              travelFromPrevMiles: null,
               text
-            };
-
-            // Insert chronologically when created on a Time Slot, otherwise append cleanly
-            if (Number.isFinite(presetStartMin)) {
-              let insertIdx = day.events.findIndex((e) => {
-                ensureEventTimeFields(e);
-                return e.startMin > startMin;
-              });
-              if (insertIdx === -1) insertIdx = day.events.length;
-              day.events.splice(insertIdx, 0, newEv);
-              targetIdx = insertIdx;
-            } else {
-              day.events.push(newEv);
-              targetIdx = day.events.length - 1;
-            }
-            targetId = newEv.id;
-            showToast('Stop added');
-          }
-
-          if (appStore.autoAdjustTimes && targetIdx >= 0) {
-            const rippled = rippleAdjustDay(day, targetIdx + 1);
-            if (rippled.length > 0) markRippledEvents([targetId, ...rippled]);
-          }
-
-          closeModal();
-          renderCarousel();
-          renderItinerary();
-          prefetchRoutesForDay(day);
-          scheduleCloudSave();
-        }
-      }
-    ]
-  });
-
-  // Live Interactive Modal Bindings
-  const startInp = document.getElementById('evStartTime');
-  const durInp = document.getElementById('evDuration');
-  const previewEl = document.getElementById('evTimePreview');
-  const fixedBtn = document.getElementById('evFixedToggleBtn');
-
-  const syncTimePreview = () => {
-    const sMin = parseInputTimeToMinutes(startInp.value, defaultStartMin);
-    const dMin = Math.max(10, Math.min(720, Math.round(Number(durInp.value) || 60)));
-    if (previewEl) previewEl.textContent = `${formatTimeRange(sMin, dMin)} (${formatDurationLabel(dMin)})`;
-    document.querySelectorAll('[data-dur-chip]').forEach((chip) => {
-      const active = Number(chip.dataset.durChip) === dMin;
-      chip.className = `px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-        active
-          ? 'bg-sky-500/25 border-sky-400/50 text-sky-200'
-          : 'bg-white/[0.05] hover:bg-white/15 border-white/10 text-white/65 hover:text-white'
-      }`;
-    });
-  };
-
-  startInp?.addEventListener('input', syncTimePreview);
-  durInp?.addEventListener('input', syncTimePreview);
-
-  document.querySelectorAll('[data-dur-chip]').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      currentDuration = Number(chip.dataset.durChip);
-      if (durInp) durInp.value = String(currentDuration);
-      syncTimePreview();
-    });
-  });
-
-  fixedBtn?.addEventListener('click', () => {
-    isFixed = !isFixed;
-    fixedBtn.className = `w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
-      isFixed
-        ? 'bg-amber-500/15 border-amber-400/45 text-amber-100'
-        : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/10 text-white/80'
-    }`;
-    const iconEl = document.getElementById('evFixedIcon');
-    const titleEl = document.getElementById('evFixedTitle');
-    const pillEl = document.getElementById('evFixedPill');
-    if (iconEl) {
-      iconEl.className = `${isFixed ? 'text-amber-300' : 'text-white/50'} shrink-0`;
-      iconEl.innerHTML = isFixed ? ICONS.lock : ICONS.unlock;
-    }
-    if (titleEl) titleEl.textContent = isFixed ? 'Fixed Time (Locked)' : 'Flexible Time (Auto-Adjusts)';
-    if (pillEl) {
-      pillEl.className = `px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-        isFixed ? 'bg-amber-400/25 text-amber-200' : 'bg-white/10 text-white/55'
-      }`;
-      pillEl.textContent = isFixed ? 'LOCKED' : 'FLEX';
-    }
-  });
-
-  document.querySelectorAll('[data-ev-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      travelMode = btn.dataset.evMode;
-      document.querySelectorAll('[data-ev-mode]').forEach((b) => {
-        const isDrive = b.dataset.evMode === 'drive';
-        const active = b.dataset.evMode === travelMode;
-        b.className = `flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-          active
-            ? (isDrive ? 'bg-sky-500/25 border-sky-400/50 text-sky-100' : 'bg-emerald-500/25 border-emerald-400/50 text-emerald-100')
-            : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-        }`;
-      });
-    });
-  });
-
-  document.getElementById('evManageCatsLink')?.addEventListener('click', () => {
-    openCustomCategoriesModal(() => openEventModal(dayId, eventId, presetStartMin));
-  });
-}
-
-/**
- * Copy Activity to Another Day Modal
- */
-export function openCopyEventModal(sourceDayId, eventId) {
-  const days = appStore.state.days;
-  const sourceDay = days.find((d) => d.id === sourceDayId);
-  const srcEvent = sourceDay?.events.find((e) => e.id === eventId);
-  if (!sourceDay || !srcEvent) return;
-  ensureEventTimeFields(srcEvent);
-
-  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40';
-  const defaultTargetDay = days.find((d) => d.id !== sourceDayId) || sourceDay;
-  const dayOptions = days.map((d, idx) => `
-    <option value="${esc(d.id)}" class="bg-slate-900" ${d.id === defaultTargetDay.id ? 'selected' : ''}>
-      ${esc(d.title || `Day ${idx + 1}`)}${d.location ? ` · ${esc(d.location)}` : ''}${d.id === sourceDayId ? ' (Current Day)' : ''}
-    </option>
-  `).join('');
-
-  let timingMode = 'append';
-
-  openModal({
-    title: 'Copy Activity to Another Day',
-    bodyHtml: `
-      <div class="space-y-4">
-        <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-3.5 space-y-1">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-orange-300">${esc(srcEvent.time)} · ${formatDurationLabel(srcEvent.durationMin)}</div>
-          <p class="text-sm font-medium text-white">${esc(srcEvent.text)}</p>
-          ${srcEvent.location ? `<p class="text-xs text-sky-300/85">${esc(srcEvent.location)}</p>` : ''}
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-white/60 mb-1">Destination Day</label>
-          <select id="copyTargetDay" class="${inp}">${dayOptions}</select>
-        </div>
-
-        <div class="space-y-2">
-          <label class="block text-xs font-semibold text-white/60">Placement Timing</label>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" data-copy-timing="append" class="py-2 px-3 rounded-xl border text-xs font-semibold bg-sky-500/25 border-sky-400/50 text-sky-100 cursor-pointer">
-              Auto-Fit at End
-            </button>
-            <button type="button" data-copy-timing="keep" class="py-2 px-3 rounded-xl border text-xs font-semibold bg-black/35 border-white/10 text-white/65 hover:text-white cursor-pointer">
-              Keep Original Time
-            </button>
-          </div>
-        </div>
-      </div>
-    `,
-    footerButtons: [
-      { label: 'Cancel', onClick: closeModal },
-      {
-        label: 'Copy Activity',
-        variant: 'primary',
-        onClick: () => {
-          const targetDayId = document.getElementById('copyTargetDay').value;
-          const targetDay = days.find((d) => d.id === targetDayId);
-          if (!targetDay) return;
-
-          let startMin = srcEvent.startMin;
-          if (timingMode === 'append' && targetDay.events.length > 0) {
-            const last = targetDay.events[targetDay.events.length - 1];
-            ensureEventTimeFields(last);
-            startMin = Math.min(23 * 60 + 15, last.startMin + last.durationMin + 15);
-          }
-
-          const clone = {
-            ...srcEvent,
-            id: uid('ev'),
-            startMin,
-            time: formatTimeRange(startMin, srcEvent.durationMin),
-            completed: false,
-            fixedTime: timingMode === 'keep' ? Boolean(srcEvent.fixedTime) : false,
-            travelFromPrevMin: null,
-            travelFromPrevMiles: null
-          };
-
-          let insertIdx = targetDay.events.length;
-          if (timingMode === 'keep') {
-            insertIdx = targetDay.events.findIndex((e) => {
-              ensureEventTimeFields(e);
-              return e.startMin > startMin;
             });
-            if (insertIdx === -1) insertIdx = targetDay.events.length;
           }
-          targetDay.events.splice(insertIdx, 0, clone);
 
-          if (appStore.autoAdjustTimes) {
-            const rippled = rippleAdjustDay(targetDay, insertIdx + 1);
-            markRippledEvents([clone.id, ...rippled]);
-          }
+          // Keep chronological order & ripple following flexible stops
+          day.events.sort((a, b) => a.startMinutes - b.startMinutes);
+          const idx = day.events.findIndex((e) => e.id === targetId);
+          const shiftedCount = rippleFlexibleActivitiesFrom(day, Math.max(0, idx));
+
+          const changedIds = getChangedEventIds(day, snapshot, [targetId]);
+          if (changedIds.length > 0) markShiftedEvents(changedIds);
 
           closeModal();
           renderCarousel();
           renderItinerary();
-          prefetchRoutesForDay(targetDay);
+          refreshTripTravelRoutes();
           scheduleCloudSave();
-          showToast(`Copied to ${targetDay.shortDay || targetDay.title}`);
-        }
-      }
-    ]
-  });
 
-  document.querySelectorAll('[data-copy-timing]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      timingMode = btn.dataset.copyTiming;
-      document.querySelectorAll('[data-copy-timing]').forEach((b) => {
-        const active = b.dataset.copyTiming === timingMode;
-        b.className = `py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer ${
-          active
-            ? 'bg-sky-500/25 border-sky-400/50 text-sky-100'
-            : 'bg-black/35 border-white/10 text-white/65 hover:text-white'
-        }`;
-      });
-    });
-  });
-}
-
-/**
- * Travel Time, Distance & Mode Override Modal (Click any Transit Connector Pill)
- */
-export function openTravelOverrideModal(dayId, eventId) {
-  const day = appStore.state.days.find((d) => d.id === dayId);
-  if (!day) return;
-  const idx = day.events.findIndex((e) => e.id === eventId);
-  if (idx <= 0) return;
-
-  const ev = day.events[idx];
-  const leg = getLegTravelInfo(day, idx);
-  let selectedMode = ev.travelMode === 'walk' ? 'walk' : 'drive';
-  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40';
-
-  openModal({
-    title: 'Travel Time & Distance',
-    bodyHtml: `
-      <div class="space-y-4">
-        <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-3.5 space-y-1 text-xs">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-sky-300">Route Segment</div>
-          <div class="text-white/90 font-medium">${esc(leg.fromLabel || 'Previous stop')} → ${esc(leg.toLabel || ev.text)}</div>
-          <div class="text-white/50">
-            ${leg.source === 'manual' ? 'Currently using custom travel override.' : leg.source === 'auto' ? `Auto-calculated: ${formatDurationLabel(leg.minutes)} · ${leg.miles} mi` : 'Add locations or enter a custom travel estimate below.'}
-          </div>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-white/60 mb-1.5">Travel Mode</label>
-          <div class="grid grid-cols-2 gap-2">
-            <button type="button" data-tr-mode="drive" class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              selectedMode === 'drive' ? 'bg-sky-500/25 border-sky-400/50 text-sky-100' : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-            }">${ICONS.drive}<span>Driving</span></button>
-            <button type="button" data-tr-mode="walk" class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-              selectedMode === 'walk' ? 'bg-emerald-500/25 border-emerald-400/50 text-emerald-100' : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-            }">${ICONS.walk}<span>Walking</span></button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Travel Time (min)</label>
-            <input id="trMinutes" type="number" inputmode="numeric" min="0" max="600" placeholder="Auto" class="${inp} tabular-nums" value="${ev.travelFromPrevMin !== null ? ev.travelFromPrevMin : (leg.minutes || '')}" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Distance (miles)</label>
-            <input id="trMiles" type="number" inputmode="decimal" min="0" step="0.1" placeholder="Auto" class="${inp} tabular-nums" value="${ev.travelFromPrevMiles !== null ? ev.travelFromPrevMiles : (leg.miles || '')}" />
-          </div>
-        </div>
-      </div>
-    `,
-    footerButtons: [
-      {
-        label: 'Use Auto-Route',
-        onClick: () => {
-          ev.travelMode = selectedMode;
-          ev.travelFromPrevMin = null;
-          ev.travelFromPrevMiles = null;
-          closeModal();
-          renderItinerary();
-          prefetchRoutesForDay(day);
-          scheduleCloudSave();
-          showToast('Reset to auto-calculated travel route');
-        }
-      },
-      {
-        label: 'Save Travel',
-        variant: 'primary',
-        onClick: () => {
-          const minRaw = document.getElementById('trMinutes').value.trim();
-          const miRaw = document.getElementById('trMiles').value.trim();
-          ev.travelMode = selectedMode;
-          ev.travelFromPrevMin = minRaw === '' ? null : Math.max(0, Math.round(Number(minRaw) || 0));
-          ev.travelFromPrevMiles = miRaw === '' ? null : Math.max(0, Number(miRaw) || 0);
-
-          if (appStore.autoAdjustTimes) {
-            const rippled = rippleAdjustDay(day, idx);
-            if (rippled.length > 0) markRippledEvents(rippled);
+          if (shiftedCount > 0) {
+            showToast(`${existing ? 'Stop updated' : 'Stop added'} · ${shiftedCount} flexible stop${shiftedCount === 1 ? '' : 's'} auto-adjusted`);
+          } else {
+            showToast(existing ? 'Stop updated' : 'Stop added');
           }
-
-          closeModal();
-          renderItinerary();
-          scheduleCloudSave();
-          showToast('Travel leg updated');
         }
       }
     ]
   });
 
-  document.querySelectorAll('[data-tr-mode]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      selectedMode = btn.dataset.trMode;
-      document.querySelectorAll('[data-tr-mode]').forEach((b) => {
-        const isDrive = b.dataset.trMode === 'drive';
-        const active = b.dataset.trMode === selectedMode;
-        b.className = `flex items-center justify-center gap-1.5 py-2.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
-          active
-            ? (isDrive ? 'bg-sky-500/25 border-sky-400/50 text-sky-100' : 'bg-emerald-500/25 border-emerald-400/50 text-emerald-100')
-            : 'bg-black/35 border-white/10 text-white/60 hover:text-white'
-        }`;
-      });
-    });
+  // Live Interactive Modal Wiring
+  const startSel = document.getElementById('evStartSlot');
+  const durSel = document.getElementById('evDuration');
+  const resSel = document.getElementById('evResTime');
+  const fixedChk = document.getElementById('evFixedToggle');
+  const catSel = document.getElementById('evCat');
+  const catBadge = document.getElementById('evCatPreviewBadge');
+  const previewWin = document.getElementById('evPreviewWindow');
+  const previewLock = document.getElementById('evPreviewLockBadge');
+
+  function refreshModalPreview() {
+    const startVal = Number(startSel.value);
+    const durVal = Number(durSel.value) || 60;
+    const hasRes = resSel.value !== '';
+    const isLocked = hasRes || fixedChk.checked;
+
+    previewWin.textContent = formatTimeWindow(startVal, durVal);
+    previewLock.textContent = hasRes ? 'Reservation · Fixed' : (isLocked ? 'Fixed Time' : 'Flexible');
+    previewLock.className = `px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 border ${
+      isLocked
+        ? 'bg-amber-500/20 border-amber-400/45 text-amber-200'
+        : 'bg-sky-500/15 border-sky-400/30 text-sky-200'
+    }`;
+
+    const catMeta = getCategoryMeta(catSel.value);
+    catBadge.className = `cat-icon-badge ${catMeta.anim || ''} w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${catMeta.color}`;
+    catBadge.innerHTML = ICONS[catMeta.icon] || ICONS.stop;
+  }
+
+  resSel?.addEventListener('change', () => {
+    if (resSel.value !== '') {
+      startSel.value = resSel.value;
+      fixedChk.checked = true;
+    }
+    refreshModalPreview();
   });
+
+  startSel?.addEventListener('change', () => {
+    if (resSel.value !== '') {
+      resSel.value = startSel.value;
+    }
+    refreshModalPreview();
+  });
+
+  durSel?.addEventListener('change', refreshModalPreview);
+
+  fixedChk?.addEventListener('change', () => {
+    if (!fixedChk.checked && resSel.value !== '') {
+      resSel.value = '';
+      showToast('Reservation time cleared — stop is now flexible');
+    }
+    refreshModalPreview();
+  });
+
+  catSel?.addEventListener('change', refreshModalPreview);
+
+  document.getElementById('evQuickNewCatBtn')?.addEventListener('click', () => {
+    openCustomCategoriesModal({ dayId, eventId });
+  });
+
+  refreshModalPreview();
 }
 
 /**
- * Custom Activity Categories Manager Modal (Create, Preview & Delete)
+ * ============================================================================
+ * CUSTOM ACTIVITY CATEGORIES CREATOR & MANAGER MODAL
+ * ============================================================================
  */
-export function openCustomCategoriesModal(onCloseCallback = null) {
+export function openCustomCategoriesModal(returnToEventContext = null) {
   if (!Array.isArray(appStore.state.customCategories)) {
     appStore.state.customCategories = [];
   }
 
-  let selectedIcon = 'star';
-  let selectedTheme = 'violet';
+  let selectedIcon = 'camera';
+  let selectedTheme = 'rose';
+  let selectedAnim = 'cat-anim-sparkle';
+
   const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40';
 
   const renderModalContent = () => {
-    const customs = appStore.state.customCategories;
-    const theme = CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.violet;
-
-    const existingListHtml = customs.length === 0
-      ? `<div class="rounded-xl border border-dashed border-white/12 bg-black/25 px-3 py-3 text-center text-xs text-white/45">No custom categories yet — create your first one below!</div>`
+    const customs = appStore.state.customCategories || [];
+    const existingHtml = customs.length === 0
+      ? `<div class="rounded-2xl border border-dashed border-white/12 bg-black/25 p-3.5 text-center text-xs text-white/45">No custom categories yet — build your first animated category below!</div>`
       : customs.map((cat) => {
-          const meta = getCategoryMeta(cat.id);
+          const theme = CUSTOM_CATEGORY_THEMES[cat.theme] || CUSTOM_CATEGORY_THEMES.cyan;
           return `
-            <div class="flex items-center justify-between gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2 animate-rowEnter">
+            <div class="flex items-center justify-between gap-2.5 rounded-2xl bg-white/[0.04] border border-white/10 px-3 py-2">
               <div class="flex items-center gap-2.5 min-w-0">
-                <span class="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 ${meta.color}">${ICONS[meta.icon] || ICONS.star}</span>
-                <span class="text-xs sm:text-sm font-semibold text-white truncate">${esc(meta.label)}</span>
+                <span class="cat-icon-badge ${esc(cat.anim || 'cat-anim-sparkle')} w-8 h-8 rounded-xl border flex items-center justify-center shrink-0 ${theme.color}">
+                  ${ICONS[cat.icon] || ICONS.star}
+                </span>
+                <div class="min-w-0">
+                  <div class="text-xs sm:text-sm font-semibold text-white truncate">${esc(cat.label)}</div>
+                  <div class="text-[10px] text-white/45">${esc(theme.label)}</div>
+                </div>
               </div>
-              <button type="button" data-del-custom-cat="${esc(cat.id)}" title="Delete category" class="p-1.5 rounded-lg text-white/45 hover:text-rose-300 hover:bg-rose-500/20 cursor-pointer shrink-0">${ICONS.trash}</button>
+              <button type="button" data-del-custom-cat="${esc(cat.id)}" title="Delete Category" class="p-1.5 rounded-lg text-white/45 hover:text-rose-300 hover:bg-rose-500/20 cursor-pointer shrink-0">
+                ${ICONS.trash}
+              </button>
             </div>
           `;
         }).join('');
+
+    const iconPickerHtml = CUSTOM_CATEGORY_ICON_OPTIONS.map((opt) => `
+      <button type="button" data-pick-icon="${opt.key}" title="${esc(opt.label)}" class="flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-[10px] transition-all cursor-pointer ${
+        selectedIcon === opt.key
+          ? 'bg-sky-500/25 border-sky-400/60 text-white shadow-md scale-[1.04]'
+          : 'bg-black/30 border-white/10 text-white/65 hover:bg-white/10 hover:text-white'
+      }">
+        <span>${ICONS[opt.key]}</span>
+        <span class="truncate max-w-full">${esc(opt.label.split(' ')[0])}</span>
+      </button>
+    `).join('');
+
+    const themePickerHtml = Object.entries(CUSTOM_CATEGORY_THEMES).map(([k, t]) => `
+      <button type="button" data-pick-theme="${k}" class="px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer ${t.color} ${
+        selectedTheme === k ? 'ring-2 ring-white/80 scale-[1.04]' : 'opacity-70 hover:opacity-100'
+      }">${esc(t.label)}</button>
+    `).join('');
+
+    const animOptionsHtml = CUSTOM_CATEGORY_ANIM_OPTIONS
+      .map((a) => `<option value="${a.key}" class="bg-slate-900" ${selectedAnim === a.key ? 'selected' : ''}>${esc(a.label)}</option>`)
+      .join('');
 
     openModal({
       title: 'Custom Activity Categories',
       bodyHtml: `
         <div class="space-y-4">
-          <div class="space-y-2">
-            <div class="text-[10px] font-bold uppercase tracking-widest text-sky-300">Your Custom Categories (${customs.length})</div>
-            <div class="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">${existingListHtml}</div>
+          <!-- Live Animated Preview -->
+          <div class="rounded-2xl bg-black/35 border border-white/15 p-3.5 flex items-center gap-3.5">
+            <span id="customCatLiveIcon" class="cat-icon-badge ${selectedAnim} w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 ${(CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.rose).color}">
+              ${ICONS[selectedIcon]}
+            </span>
+            <div class="min-w-0 flex-1">
+              <div class="text-[10px] font-bold uppercase tracking-widest text-sky-300">Live Category Preview</div>
+              <div id="customCatLiveName" class="text-sm font-bold text-white truncate mt-0.5">Coffee &amp; Bakery</div>
+              <div class="text-[11px] text-white/50">Shows live animation right inside your timeline</div>
+            </div>
           </div>
 
-          <div class="rounded-2xl border border-white/12 bg-black/35 p-4 space-y-3.5">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-semibold text-white">Create New Category</span>
-              <span id="catPreviewBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${theme.color}">
-                <span>${ICONS[selectedIcon]}</span>
-                <span id="catPreviewLabel">New Category</span>
-              </span>
+          <!-- Creator Inputs -->
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Category Name</label>
+              <input id="newCatName" placeholder="e.g. Coffee Stop, Photo Spot, Beach Time, Kids Play" class="${inp}" />
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-white/60 mb-1">Category Name</label>
-              <input id="customCatName" placeholder="e.g. Coffee & Cafe, Photo Spot, Kids Play, Shopping" class="${inp}" />
+              <label class="block text-xs font-semibold text-white/65 mb-1.5">Pick an Icon</label>
+              <div id="catIconGrid" class="grid grid-cols-4 sm:grid-cols-6 gap-1.5">${iconPickerHtml}</div>
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-white/60 mb-1.5">Choose Color Glow</label>
-              <div class="flex flex-wrap items-center gap-2">
-                ${Object.entries(CUSTOM_CATEGORY_THEMES).map(([key, t]) => `
-                  <button
-                    type="button"
-                    data-cat-theme="${key}"
-                    title="${esc(t.label)}"
-                    class="w-7 h-7 rounded-full ${t.swatch} border-2 transition-transform cursor-pointer ${
-                      selectedTheme === key ? 'border-white scale-115 shadow-lg' : 'border-transparent opacity-70 hover:opacity-100'
-                    }"
-                  ></button>
-                `).join('')}
-              </div>
+              <label class="block text-xs font-semibold text-white/65 mb-1.5">Glow Color Theme</label>
+              <div id="catThemeRow" class="flex flex-wrap gap-1.5">${themePickerHtml}</div>
             </div>
 
             <div>
-              <label class="block text-xs font-semibold text-white/60 mb-1.5">Choose Icon</label>
-              <div class="grid grid-cols-8 gap-1.5">
-                ${CUSTOM_CATEGORY_ICON_KEYS.map((iconKey) => `
-                  <button
-                    type="button"
-                    data-cat-icon="${iconKey}"
-                    class="h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-                      selectedIcon === iconKey
-                        ? `${theme.color} scale-105`
-                        : 'bg-white/[0.04] border-white/10 text-white/60 hover:text-white hover:bg-white/10'
-                    }"
-                  >${ICONS[iconKey]}</button>
-                `).join('')}
-              </div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Live Icon Animation</label>
+              <select id="newCatAnim" class="${inp}">${animOptionsHtml}</select>
             </div>
+          </div>
 
-            <button
-              id="createCustomCatBtn"
-              type="button"
-              class="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white text-xs sm:text-sm font-semibold shadow-lg transition-all cursor-pointer"
-            >+ Save Custom Category</button>
+          <!-- Existing Custom Categories -->
+          <div class="pt-2 border-t border-white/10 space-y-2">
+            <div class="text-[11px] font-bold uppercase tracking-wider text-white/50">Your Saved Custom Categories (${customs.length})</div>
+            <div class="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">${existingHtml}</div>
           </div>
         </div>
       `,
       footerButtons: [
         {
-          label: 'Done',
+          label: returnToEventContext ? 'Back to Stop' : 'Done',
           onClick: () => {
             closeModal();
-            if (typeof onCloseCallback === 'function') onCloseCallback();
+            if (returnToEventContext) {
+              openEventModal(returnToEventContext.dayId, returnToEventContext.eventId);
+            }
+          }
+        },
+        {
+          label: '+ Create Category',
+          variant: 'primary',
+          onClick: () => {
+            const label = document.getElementById('newCatName').value.trim();
+            if (!label) return showToast('Please enter a category name', 'error');
+            const newId = uid('cat');
+            appStore.state.customCategories.push({
+              id: newId,
+              label,
+              icon: selectedIcon,
+              theme: selectedTheme,
+              anim: selectedAnim
+            });
+            scheduleCloudSave();
+            renderItinerary();
+            showToast(`Created "${label}" category!`);
+            if (returnToEventContext) {
+              closeModal();
+              openEventModal(returnToEventContext.dayId, returnToEventContext.eventId, newId);
+            } else {
+              renderModalContent();
+            }
           }
         }
       ]
     });
 
-    const nameInp = document.getElementById('customCatName');
-    const previewBadge = document.getElementById('catPreviewBadge');
-    const previewLabel = document.getElementById('catPreviewLabel');
+    const nameInp = document.getElementById('newCatName');
+    const animSel = document.getElementById('newCatAnim');
+    const liveIcon = document.getElementById('customCatLiveIcon');
+    const liveName = document.getElementById('customCatLiveName');
 
-    const updatePreview = () => {
-      const t = CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.violet;
-      if (previewBadge) {
-        previewBadge.className = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${t.color}`;
-        previewBadge.innerHTML = `<span>${ICONS[selectedIcon]}</span><span id="catPreviewLabel">${esc(nameInp?.value.trim() || 'New Category')}</span>`;
-      } else if (previewLabel) {
-        previewLabel.textContent = nameInp?.value.trim() || 'New Category';
-      }
+    const updateLivePreview = () => {
+      const theme = CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.rose;
+      liveIcon.className = `cat-icon-badge ${selectedAnim} w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 ${theme.color}`;
+      liveIcon.innerHTML = ICONS[selectedIcon] || ICONS.star;
+      liveName.textContent = nameInp.value.trim() || 'Coffee & Bakery';
     };
 
-    nameInp?.addEventListener('input', updatePreview);
-
-    document.querySelectorAll('[data-cat-theme]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        selectedTheme = btn.dataset.catTheme;
-        document.querySelectorAll('[data-cat-theme]').forEach((b) => {
-          const active = b.dataset.catTheme === selectedTheme;
-          b.classList.toggle('border-white', active);
-          b.classList.toggle('scale-115', active);
-          b.classList.toggle('shadow-lg', active);
-          b.classList.toggle('border-transparent', !active);
-          b.classList.toggle('opacity-70', !active);
-        });
-        updatePreview();
-      });
+    nameInp?.addEventListener('input', updateLivePreview);
+    animSel?.addEventListener('change', () => {
+      selectedAnim = animSel.value;
+      updateLivePreview();
     });
 
-    document.querySelectorAll('[data-cat-icon]').forEach((btn) => {
+    document.querySelectorAll('[data-pick-icon]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        selectedIcon = btn.dataset.catIcon;
-        const t = CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.violet;
-        document.querySelectorAll('[data-cat-icon]').forEach((b) => {
-          const active = b.dataset.catIcon === selectedIcon;
-          b.className = `h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+        selectedIcon = btn.dataset.pickIcon;
+        document.querySelectorAll('[data-pick-icon]').forEach((b) => {
+          const active = b.dataset.pickIcon === selectedIcon;
+          b.className = `flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-[10px] transition-all cursor-pointer ${
             active
-              ? `${t.color} scale-105`
-              : 'bg-white/[0.04] border-white/10 text-white/60 hover:text-white hover:bg-white/10'
+              ? 'bg-sky-500/25 border-sky-400/60 text-white shadow-md scale-[1.04]'
+              : 'bg-black/30 border-white/10 text-white/65 hover:bg-white/10 hover:text-white'
           }`;
         });
-        updatePreview();
+        updateLivePreview();
       });
     });
 
-    document.getElementById('createCustomCatBtn')?.addEventListener('click', () => {
-      const label = nameInp?.value.trim() || '';
-      if (!label) return showToast('Enter a category name', 'error');
-      const t = CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.violet;
-      appStore.state.customCategories.push({
-        id: uid('cat'),
-        label,
-        icon: selectedIcon,
-        themeKey: selectedTheme,
-        color: t.color,
-        rgb: t.rgb
+    document.querySelectorAll('[data-pick-theme]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectedTheme = btn.dataset.pickTheme;
+        document.querySelectorAll('[data-pick-theme]').forEach((b) => {
+          const key = b.dataset.pickTheme;
+          const t = CUSTOM_CATEGORY_THEMES[key];
+          const active = key === selectedTheme;
+          b.className = `px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer ${t.color} ${
+            active ? 'ring-2 ring-white/80 scale-[1.04]' : 'opacity-70 hover:opacity-100'
+          }`;
+        });
+        updateLivePreview();
       });
-      renderItinerary();
-      scheduleCloudSave();
-      showToast(`Created "${label}" category`);
-      renderModalContent();
     });
 
     document.querySelectorAll('[data-del-custom-cat]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const delId = btn.dataset.delCustomCat;
         appStore.state.customCategories = appStore.state.customCategories.filter((c) => c.id !== delId);
-        // Safely reset any stop using the deleted category back to 'stop'
+        // Reset any stops using the deleted category back to 'stop'
         appStore.state.days.forEach((d) => {
-          d.events.forEach((e) => {
-            if (e.category === delId) e.category = 'stop';
+          (d.events || []).forEach((ev) => {
+            if (ev.category === delId) ev.category = 'stop';
           });
         });
-        renderItinerary();
         scheduleCloudSave();
+        renderItinerary();
         showToast('Custom category removed');
         renderModalContent();
       });
@@ -1569,8 +1398,112 @@ export function openCustomCategoriesModal(onCloseCallback = null) {
 }
 
 /**
- * Delete & Reorder Itinerary Stops (With Auto-Adjust Ripple Support)
+ * ============================================================================
+ * COPY ACTIVITY TO ANOTHER DAY MODAL
+ * ============================================================================
  */
+export function openCopyToDayModal(sourceDayId, eventId) {
+  const days = appStore.state.days;
+  const sourceDay = days.find((d) => d.id === sourceDayId);
+  const ev = sourceDay?.events.find((e) => e.id === eventId);
+  if (!sourceDay || !ev) return;
+
+  const targetDays = days.filter((d) => d.id !== sourceDayId);
+  if (targetDays.length === 0) {
+    return showToast('Add another day first to copy this activity across days', 'error');
+  }
+
+  let selectedTargetDayId = targetDays[0].id;
+
+  const dayCardsHtml = targetDays.map((d) => `
+    <button
+      type="button"
+      data-copy-target-day="${esc(d.id)}"
+      class="w-full text-left rounded-2xl border p-3.5 transition-all cursor-pointer ${
+        d.id === selectedTargetDayId
+          ? 'bg-gradient-to-r from-orange-500/20 to-sky-500/20 border-sky-400/55 shadow-md'
+          : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/12'
+      }"
+    >
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs sm:text-sm font-semibold text-white truncate">${esc(d.title)}</div>
+          <div class="text-[11px] text-white/55 truncate mt-0.5">${esc(d.location || '')} · ${d.events.length} stops</div>
+        </div>
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-black/35 border border-white/15 text-sky-200 shrink-0">${esc(d.shortDay)}</span>
+      </div>
+    </button>
+  `).join('');
+
+  openModal({
+    title: 'Copy Activity to Another Day',
+    bodyHtml: `
+      <div class="space-y-4">
+        <div class="rounded-2xl bg-black/35 border border-white/12 p-3.5">
+          <div class="text-[10px] font-bold uppercase tracking-widest text-orange-300">Activity to Copy</div>
+          <div class="text-xs font-bold text-white/80 mt-1">${esc(ev.time)}</div>
+          <p class="text-xs sm:text-sm text-white/90 mt-0.5 line-clamp-2">${esc(ev.text)}</p>
+        </div>
+
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold text-white/65">Choose Destination Day</label>
+          <div class="space-y-2 max-h-56 overflow-y-auto pr-0.5">${dayCardsHtml}</div>
+        </div>
+
+        <label class="flex items-start gap-2.5 cursor-pointer select-none">
+          <input id="copyKeepFixedChk" type="checkbox" ${ev.isFixed ? 'checked' : ''} class="mt-0.5 w-4 h-4 rounded accent-amber-400 cursor-pointer" />
+          <div class="text-xs">
+            <span class="font-semibold text-white">Keep exact Fixed / Reservation Time (${esc(formatMinutesTo12h(ev.startMinutes))})</span>
+            <p class="text-[11px] text-white/50 mt-0.5">Unchecked will automatically fit it into the next open slot on that day.</p>
+          </div>
+        </label>
+      </div>
+    `,
+    footerButtons: [
+      { label: 'Cancel', onClick: closeModal },
+      {
+        label: 'Copy to Day',
+        variant: 'primary',
+        onClick: () => {
+          const targetDay = days.find((d) => d.id === selectedTargetDayId);
+          if (!targetDay) return;
+          const keepFixed = Boolean(document.getElementById('copyKeepFixedChk')?.checked);
+          const cloned = copyEventToDay(sourceDay, targetDay, eventId, uid('ev'), keepFixed);
+          if (cloned) {
+            markShiftedEvents([cloned.id]);
+            closeModal();
+            renderCarousel();
+            renderItinerary();
+            refreshTripTravelRoutes();
+            scheduleCloudSave();
+            showToast(`Copied to ${targetDay.shortDay} · ${targetDay.shortDate || targetDay.location}`);
+          }
+        }
+      }
+    ]
+  });
+
+  document.querySelectorAll('[data-copy-target-day]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedTargetDayId = btn.dataset.copyTargetDay;
+      document.querySelectorAll('[data-copy-target-day]').forEach((b) => {
+        const active = b.dataset.copyTargetDay === selectedTargetDayId;
+        b.className = `w-full text-left rounded-2xl border p-3.5 transition-all cursor-pointer ${
+          active
+            ? 'bg-gradient-to-r from-orange-500/20 to-sky-500/20 border-sky-400/55 shadow-md'
+            : 'bg-white/[0.04] hover:bg-white/[0.08] border-white/12'
+        }`;
+      });
+    });
+  });
+}
+
+/**
+ * ============================================================================
+ * TIMELINE QUICK ACTIONS & DRAG-AND-DROP MUTATION HANDLERS
+ * ============================================================================
+ */
+
 export function deleteEvent(dayId, eventId) {
   const day = appStore.state.days.find((d) => d.id === dayId);
   const ev = day?.events.find((e) => e.id === eventId);
@@ -1583,7 +1516,7 @@ export function deleteEvent(dayId, eventId) {
       day.events = day.events.filter((e) => e.id !== eventId);
       renderCarousel();
       renderItinerary();
-      prefetchRoutesForDay(day);
+      refreshTripTravelRoutes();
       scheduleCloudSave();
       showToast('Stop removed');
     }
@@ -1596,42 +1529,137 @@ export function moveEvent(dayId, eventId, dir) {
   const idx = day.events.findIndex((e) => e.id === eventId);
   const target = idx + dir;
   if (idx < 0 || target < 0 || target >= day.events.length) return;
+  handleDragReorderEvent(dayId, eventId, target);
+}
 
-  const anchorStart = day.events[Math.min(idx, target)].startMin;
-  const [moved] = day.events.splice(idx, 1);
-  moved.travelFromPrevMin = null;
-  moved.travelFromPrevMiles = null;
-  day.events.splice(target, 0, moved);
+export function handleDragReorderEvent(dayId, eventId, targetIndex) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const snapshot = captureStartSnapshot(day);
+  const res = reorderEventInDay(day, eventId, targetIndex);
+  if (!res.moved) return;
 
-  if (appStore.autoAdjustTimes) {
-    const rippled = [];
-    const firstAffected = Math.min(idx, target);
-    const firstEv = day.events[firstAffected];
-    ensureEventTimeFields(firstEv);
+  const changedIds = getChangedEventIds(day, snapshot, [eventId]);
+  markShiftedEvents(changedIds);
+  renderItinerary();
+  refreshTripTravelRoutes();
+  scheduleCloudSave();
 
-    if (!firstEv.fixedTime) {
-      if (firstAffected === 0) {
-        firstEv.startMin = anchorStart;
-      } else {
-        const prev = day.events[firstAffected - 1];
-        ensureEventTimeFields(prev);
-        const leg = getLegTravelInfo(day, firstAffected);
-        firstEv.startMin = Math.min(23 * 60 + 30, prev.startMin + prev.durationMin + (leg.minutes || 0));
-      }
-      firstEv.time = formatTimeRange(firstEv.startMin, firstEv.durationMin);
-      rippled.push(firstEv.id);
-    }
-
-    const following = rippleAdjustDay(day, Math.max(1, firstAffected + 1), { packAll: true });
-    following.forEach((id) => {
-      if (!rippled.includes(id)) rippled.push(id);
-    });
-    if (rippled.length > 0) markRippledEvents(rippled);
+  if (res.shiftedCount > 0) {
+    showToast(`Moved stop · ${res.shiftedCount} flexible stop${res.shiftedCount === 1 ? '' : 's'} auto-adjusted`);
+  } else {
+    showToast(`Moved to ${res.event.time}`);
   }
+}
+
+export function handleDragMoveToTimeSlot(dayId, eventId, newStartMinutes) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const snapshot = captureStartSnapshot(day);
+  const res = moveEventToTimeSlot(day, eventId, newStartMinutes);
+  if (!res.moved) return;
+
+  const changedIds = getChangedEventIds(day, snapshot, [eventId]);
+  markShiftedEvents(changedIds);
+  renderItinerary();
+  refreshTripTravelRoutes();
+  scheduleCloudSave();
+
+  const label = formatMinutesTo12h(res.event.startMinutes);
+  if (res.shiftedCount > 0) {
+    showToast(`Rescheduled to ${label} · ${res.shiftedCount} flexible stop${res.shiftedCount === 1 ? '' : 's'} shifted`);
+  } else {
+    showToast(`Rescheduled to ${label}`);
+  }
+}
+
+export function handleDragMoveAcrossDays(sourceDayId, targetDayId, eventId, targetIndex = null) {
+  const sourceDay = appStore.state.days.find((d) => d.id === sourceDayId);
+  const targetDay = appStore.state.days.find((d) => d.id === targetDayId);
+  if (!sourceDay || !targetDay || sourceDay.id === targetDay.id) return;
+
+  const snapshot = captureStartSnapshot(targetDay);
+  const res = moveEventAcrossDays(sourceDay, targetDay, eventId, targetIndex);
+  if (!res.moved) return;
+
+  const changedIds = getChangedEventIds(targetDay, snapshot, [eventId]);
+  markShiftedEvents(changedIds);
+  renderCarousel();
+  renderForecastStrip();
+  renderItinerary();
+  refreshTripTravelRoutes();
+  scheduleCloudSave();
+
+  showToast(`Moved to ${targetDay.shortDay} (${res.event.time})${res.shiftedCount > 0 ? ` · ${res.shiftedCount} shifted` : ''}`);
+}
+
+export function duplicateEvent(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const snapshot = captureStartSnapshot(day);
+  const res = duplicateEventInDay(day, eventId, uid('ev'));
+  if (!res) return;
+
+  const changedIds = getChangedEventIds(day, snapshot, [res.copy.id]);
+  markShiftedEvents(changedIds);
+  renderCarousel();
+  renderItinerary();
+  refreshTripTravelRoutes();
+  scheduleCloudSave();
+
+  showToast(`Duplicated stop (${res.copy.time})${res.shiftedCount > 0 ? ` · ${res.shiftedCount} shifted` : ''}`);
+}
+
+export function toggleEventCompleted(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  const ev = day?.events.find((e) => e.id === eventId);
+  if (!ev) return;
+  ev.completed = !ev.completed;
+  if (ev.completed) {
+    appStore.justCompletedEventId = ev.id;
+    setTimeout(() => {
+      if (appStore.justCompletedEventId === ev.id) appStore.justCompletedEventId = null;
+    }, 700);
+  }
+  renderItinerary();
+  scheduleCloudSave();
+  showToast(ev.completed ? 'Activity marked completed!' : 'Activity marked active');
+}
+
+export function toggleEventFixed(dayId, eventId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  const ev = day?.events.find((e) => e.id === eventId);
+  if (!ev) return;
+
+  if (ev.isFixed) {
+    ev.isFixed = false;
+    ev.reservationMinutes = null;
+    showToast('Unlocked — activity is now flexible');
+  } else {
+    ev.isFixed = true;
+    showToast(`Locked as Fixed Time (${formatMinutesTo12h(ev.startMinutes)})`);
+  }
+  renderItinerary();
+  scheduleCloudSave();
+}
+
+export function handleAutoFitDay(dayId) {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  if (!day) return;
+  const snapshot = captureStartSnapshot(day);
+  const changes = autoFitDaySchedule(day);
+  const changedIds = getChangedEventIds(day, snapshot);
+  if (changedIds.length > 0) markShiftedEvents(changedIds);
 
   renderItinerary();
-  prefetchRoutesForDay(day);
+  refreshTripTravelRoutes();
   scheduleCloudSave();
+
+  if (changes > 0) {
+    showToast(`Auto-fitted ${changes} flexible stop${changes === 1 ? '' : 's'} around Fixed Times & travel!`);
+  } else {
+    showToast('Schedule is already cleanly spaced (Fixed Times remain locked)');
+  }
 }
 
 /**
@@ -1661,7 +1689,7 @@ export function confirmResetPlanner() {
       renderAll();
       prefetchAllDaysWeather();
       prefetchAllCardPhotos();
-      prefetchRoutesForTrip();
+      refreshTripTravelRoutes();
       scheduleCloudSave();
       showToast('Current trip reset to default');
     }

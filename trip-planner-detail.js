@@ -53,6 +53,7 @@ export const detailHooks = {
   openCopyToDayModal: () => {},
   toggleEventCompleted: () => {},
   toggleEventFixed: () => {},
+  toggleEventTravelMode: () => {},
   handleAutoFitDay: () => {},
   openCustomCategoriesModal: () => {}
 };
@@ -120,7 +121,7 @@ function renderTripTelemetry(tripStats) {
 }
 
 /**
- * Render Transit Route Connector Between Located Stops
+ * Render Interactive Transit Route Connector (Click to Toggle Walk / Drive)
  */
 function renderTransitConnectorHtml(leg) {
   if (!leg) return '';
@@ -143,7 +144,7 @@ function renderTransitConnectorHtml(leg) {
         <div class="h-4 transit-road-dash opacity-30"></div>
         <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-white/[0.05] border border-white/12 text-white/50">
           <span>${ICONS.route}</span>
-          <span>Route unavailable · check address</span>
+          <span>Route unavailable · edit &amp; verify address</span>
         </span>
       </div>
     `;
@@ -153,17 +154,28 @@ function renderTransitConnectorHtml(leg) {
   const isWalk = leg.mode === 'walking';
   const modeIcon = isWalk ? ICONS.walk : ICONS.drive;
   const modeText = isWalk ? 'walk' : 'drive';
+  const switchLabel = isWalk ? 'Switch to Drive' : 'Switch to Walk';
   const warnClass = leg.hasWarning ? 'transit-connector--warning' : '';
 
   const pillClasses = leg.hasWarning
-    ? 'bg-rose-500/20 border-rose-400/50 text-rose-100 warning-pulse'
-    : 'bg-sky-500/12 border-sky-400/25 text-sky-200';
+    ? 'bg-rose-500/20 hover:bg-rose-500/30 border-rose-400/50 text-rose-100 warning-pulse'
+    : isWalk
+      ? 'bg-emerald-500/12 hover:bg-emerald-500/22 border-emerald-400/30 text-emerald-100'
+      : 'bg-sky-500/12 hover:bg-sky-500/22 border-sky-400/25 text-sky-200';
 
   return `
     <div class="transit-connector ${warnClass} flex items-center gap-2.5 pl-4 sm:pl-6 py-0.5">
       <div class="h-6 transit-road-dash shrink-0"></div>
-      <div title="From ${esc(leg.fromLocation)} to ${esc(leg.toLocation)}" class="inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold backdrop-blur-md ${pillClasses}">
-        <span class="${leg.hasWarning ? 'text-rose-300' : 'text-sky-300'} shrink-0">${modeIcon}</span>
+      <button
+        type="button"
+        data-action="toggle-travel-mode"
+        data-day="${esc(leg.dayId || '')}"
+        data-event="${esc(leg.eventId || '')}"
+        data-mode="${esc(leg.mode || 'driving')}"
+        title="From ${esc(leg.fromLocation)} to ${esc(leg.toLocation)} · Click to ${switchLabel.toLowerCase()}"
+        class="group/leg inline-flex flex-wrap items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold backdrop-blur-md transition-all duration-200 cursor-pointer ${pillClasses}"
+      >
+        <span class="${leg.hasWarning ? 'text-rose-300' : isWalk ? 'text-emerald-300' : 'text-sky-300'} shrink-0">${modeIcon}</span>
         ${isLoading ? `
           <span class="text-white/65 animate-pulse">Calculating route &amp; travel time...</span>
         ` : `
@@ -172,6 +184,9 @@ function renderTransitConnectorHtml(leg) {
           <span class="tabular-nums">${esc(formatDuration(leg.durationMinutes))} ${modeText}</span>
           ${leg.estimated ? `<span class="text-[9px] uppercase tracking-wider opacity-60">(est)</span>` : ''}
           ${leg.skippedUnlocatedStops ? `<span class="text-[10px] font-normal text-white/55">from last location</span>` : ''}
+          <span class="hidden sm:inline-block text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.2 rounded-full bg-black/30 text-white/55 group-hover/leg:text-white transition-colors">
+            ${isWalk ? 'Drive?' : 'Walk?'}
+          </span>
           ${leg.hasWarning ? `
             <span class="inline-flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-full bg-rose-500/35 text-[10px] font-bold text-white">
               ${ICONS.alert}
@@ -179,7 +194,7 @@ function renderTransitConnectorHtml(leg) {
             </span>
           ` : ''}
         `}
-      </div>
+      </button>
     </div>
   `;
 }
@@ -284,6 +299,7 @@ export function renderItinerary() {
                   const isInheritedLoc = !ev.location && dayStats.inheritedEventId === ev.id && Boolean(dayStats.inheritedStartLocation);
                   const displayLocation = ev.location || (isInheritedLoc ? dayStats.inheritedStartLocation : '');
                   const mapUrl = getStopMapUrl(displayLocation);
+                  const isVerifiedPin = Boolean(ev.location && ev.locationCoords);
                   const leg = dayStats.legsByEventId.get(ev.id);
                   const warning = dayStats.warningsByEventId.get(ev.id);
                   const isShifted = appStore.justShiftedEventIds.has(ev.id);
@@ -405,14 +421,14 @@ export function renderItinerary() {
                                   href="${esc(mapUrl)}"
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title="${isInheritedLoc ? 'Inherited from previous day end location · Edit stop to override' : `Open ${esc(displayLocation)} in Google Maps`}"
+                                  title="${isInheritedLoc ? 'Inherited from previous day end location · Edit stop to override' : isVerifiedPin ? `Verified address · Open ${esc(displayLocation)} in Google Maps` : `Open ${esc(displayLocation)} in Google Maps`}"
                                   class="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-200 ${
                                     isInheritedLoc
                                       ? 'bg-sky-500/10 hover:bg-sky-500/20 border border-dashed border-sky-400/35 text-sky-200/85 hover:text-white'
                                       : 'bg-sky-500/15 hover:bg-sky-500/30 border border-sky-400/30 hover:border-sky-300/60 text-sky-200 hover:text-white'
                                   }"
                                 >
-                                  <span class="text-sky-300 shrink-0">${ICONS.pin}</span>
+                                  <span class="${isVerifiedPin ? 'text-emerald-300' : 'text-sky-300'} shrink-0">${ICONS.pin}</span>
                                   ${isInheritedLoc ? `<span class="text-[10px] font-semibold text-orange-200/90 shrink-0">From prev day:</span>` : ''}
                                   <span class="truncate">${esc(getStopLocationLabel(displayLocation))}</span>
                                   <span class="opacity-65 shrink-0">${ICONS.link}</span>
@@ -470,7 +486,7 @@ export function renderItinerary() {
   container.querySelectorAll('[data-action]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const { action, day, event, dir } = btn.dataset;
+      const { action, day, event, dir, mode } = btn.dataset;
       if (action === 'edit-day') detailHooks.openDayModal(day);
       if (action === 'delete-day') detailHooks.confirmDeleteDay(day);
       if (action === 'add-event') detailHooks.openEventModal(day, null);
@@ -481,6 +497,7 @@ export function renderItinerary() {
       if (action === 'copy-to-day') detailHooks.openCopyToDayModal(day, event);
       if (action === 'toggle-complete') detailHooks.toggleEventCompleted(day, event);
       if (action === 'toggle-fixed') detailHooks.toggleEventFixed(day, event);
+      if (action === 'toggle-travel-mode') detailHooks.toggleEventTravelMode(day, event, mode);
       if (action === 'auto-fit-day') detailHooks.handleAutoFitDay(day);
     });
   });

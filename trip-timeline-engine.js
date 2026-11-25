@@ -1,14 +1,14 @@
 /**
  * ============================================================================
- * SPATIAL TRIPOS · SMART TIMELINE, RIPPLE SCHEDULER & LIVE TRAVEL ENGINE
+ * SPATIAL TRIPOS · SMART TIMELINE, RIPPLE SCHEDULER & LIVE TRAVEL ENGINE (V3)
  * ============================================================================
  * Handles:
  *  1. Structured 15-minute Time Slots, Point-in-Time (0 min) stops & migration
  *  2. Flexible Ripple Auto-Adjustment & Fixed Time / Reservation anchoring
- *  3. Reliable Street-Address Geocoding (Photon + Nominatim + City/ZIP fallback)
- *     & OSRM Road Routing with timeout protection, caching & road-factor fallback
- *  4. Previous-Day End Location inheritance for Next Day (unless user sets one)
- *  5. Missing-location pass-through + accurate Day Travel & Trip Travel totals
+ *  3. Exact Street-Address Geocoding (Nominatim house-number priority + strict
+ *     Photon ZIP/city/house validation) & Live Address Autocomplete / Verification
+ *  4. Real Walking (OSRM Foot) vs Driving (OSRM Car) routing + per-leg toggle
+ *  5. Previous-Day End Location inheritance + accurate Day & Trip Travel totals
  * ============================================================================
  */
 
@@ -44,7 +44,7 @@ export const QUICK_TIME_JUMP_SLOTS = [
 ];
 
 /**
- * Built-in Coordinate Dictionary (Used for city/landmark names or as last-resort fallback)
+ * Built-in Coordinate Dictionary (Only used for bare city/landmark names or last-resort fallback)
  */
 const PRESET_COORDINATES = {
   'west covina': { lat: 34.0686, lng: -117.9390 },
@@ -167,10 +167,6 @@ function to24hMinutes(hour, minute, meridiem) {
   return h * 60 + m;
 }
 
-/**
- * Parse legacy text time strings (e.g. "5:30–6:00 PM", "By 11:00 AM", "4:00 PM")
- * into structured { startMinutes, durationMinutes }
- */
 export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
   const raw = String(timeStr || '').trim();
   if (!raw) {
@@ -193,7 +189,6 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
     return { startMinutes: roundNearestSlot(fallbackStartMins), durationMinutes: 60 };
   }
 
-  // Single timestamp (e.g. "4:00 PM", "By 11:00 AM") -> Point in time (0 min duration)
   if (matches.length === 1) {
     const m1 = matches[0];
     let mer = m1.meridiem;
@@ -204,7 +199,6 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
     return { startMinutes: roundNearestSlot(start), durationMinutes: 0 };
   }
 
-  // Range: start – end
   const m1 = matches[0];
   const m2 = matches[1];
   const endMer = m2.meridiem || m1.meridiem || (fallbackStartMins >= 12 * 60 ? 'PM' : 'AM');
@@ -232,9 +226,6 @@ export function parseTimeStringToWindow(timeStr, fallbackStartMins = 9 * 60) {
   };
 }
 
-/**
- * Normalize a single itinerary stop so time slots, 0-min milestones, reservation locks & completion flags are consistent
- */
 export function normalizeEventSchedule(ev, fallbackStartMins = 9 * 60) {
   if (!ev || typeof ev !== 'object') return ev;
 
@@ -267,6 +258,10 @@ export function normalizeEventSchedule(ev, fallbackStartMins = 9 * 60) {
 
   ev.completed = Boolean(ev.completed);
   ev.location = typeof ev.location === 'string' ? ev.location : '';
+  ev.travelMode = ['auto', 'drive', 'walk'].includes(ev.travelMode) ? ev.travelMode : 'auto';
+  if (ev.locationCoords && (!Number.isFinite(Number(ev.locationCoords.lat)) || !Number.isFinite(Number(ev.locationCoords.lng)))) {
+    ev.locationCoords = null;
+  }
   ev.time = formatTimeWindow(ev.startMinutes, ev.durationMinutes);
   return ev;
 }
@@ -287,12 +282,12 @@ export function normalizeTripSchedules(trip) {
 
 /**
  * ============================================================================
- * 2. LIVE GEOCODING & TRAVEL TIME / DISTANCE ENGINE (V2 - ACCURATE & RELIABLE)
+ * 2. VERIFIED GEOCODING, AUTOCOMPLETE & REAL WALK/DRIVE ROUTING ENGINE (V3)
  * ============================================================================
  */
 
-const STORAGE_GEO_KEY = 'tripos_geo_cache_v2';
-const STORAGE_ROUTE_KEY = 'tripos_route_cache_v2';
+const STORAGE_GEO_KEY = 'tripos_geo_cache_v3';
+const STORAGE_ROUTE_KEY = 'tripos_route_cache_v3';
 
 const geoMemoryCache = new Map();
 const routeMemoryCache = new Map();
@@ -315,15 +310,25 @@ function loadCacheFromStorage(key, map) {
 
 function saveCacheToStorage(key, map) {
   try {
-    const entries = Array.from(map.entries()).slice(-220);
+    const entries = Array.from(map.entries()).slice(-240);
     window.localStorage?.setItem(key, JSON.stringify(Object.fromEntries(entries)));
   } catch (err) {
-    // Ignore storage quota or sandbox errors
+    // Ignore storage quota errors
   }
 }
 
 loadCacheFromStorage(STORAGE_GEO_KEY, geoMemoryCache);
 loadCacheFromStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
+
+// Remove old mis-pinned v1/v2 caches cleanly
+try {
+  window.localStorage?.removeItem('tripos_geo_cache_v1');
+  window.localStorage?.removeItem('tripos_route_cache_v1');
+  window.localStorage?.removeItem('tripos_geo_cache_v2');
+  window.localStorage?.removeItem('tripos_route_cache_v2');
+} catch (err) {
+  // Ignore
+}
 
 async function fetchJsonWithTimeout(url, timeoutMs = 5500, options = {}) {
   const controller = new AbortController();
@@ -359,7 +364,6 @@ function extractLocationText(rawLoc) {
   if (!trimmed) return '';
   if (!/^https?:\/\//i.test(trimmed)) return cleanAddressText(trimmed);
 
-  // Extract coordinates or query from Google Maps links
   const atMatch = trimmed.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (atMatch) return `${atMatch[1]},${atMatch[2]}`;
   try {
@@ -395,6 +399,38 @@ function hasCityOrRegion(str) {
   return false;
 }
 
+function parseExpectedAddressParts(cleaned) {
+  const str = String(cleaned || '').trim();
+  const houseMatch = str.match(/^(\d+[A-Za-z]?)\s+([^,]+)/);
+  const zipMatch = str.match(/\b(\d{5})(?:-\d{4})?\b/);
+  const parts = str.split(',').map((p) => p.trim()).filter(Boolean);
+
+  let city = '';
+  if (parts.length >= 2) {
+    city = parts[1]
+      .replace(/\b[A-Z]{2}\b/g, '')
+      .replace(/\b\d{5}(?:-\d{4})?\b/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  let streetCore = '';
+  if (houseMatch) {
+    streetCore = houseMatch[2]
+      .toLowerCase()
+      .replace(/\b(avenue|ave|street|st|drive|dr|boulevard|blvd|road|rd|lane|ln|court|ct|place|pl|parkway|pkwy|way|circle|cir|north|south|east|west|n|s|e|w)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return {
+    houseNumber: houseMatch ? houseMatch[1].toLowerCase() : '',
+    streetCore,
+    city,
+    zip: zipMatch ? zipMatch[1] : ''
+  };
+}
+
 function extractCityFallback(cleanedAddress) {
   const parts = String(cleanedAddress || '')
     .split(',')
@@ -422,141 +458,154 @@ function lookupPresetCoordinates(rawQuery) {
   return bestKey ? PRESET_COORDINATES[bestKey] : null;
 }
 
-export function haversineMiles(a, b) {
-  const R = 3958.7613; // Earth radius in miles
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+function formatCandidateLabel(c) {
+  const line1 = c.name && (!c.houseNumber || !c.street)
+    ? c.name
+    : [c.houseNumber, c.street].filter(Boolean).join(' ').trim() || c.name || '';
+  const stateZip = [c.stateShort || c.state, c.postcode].filter(Boolean).join(' ').trim();
+  const segments = [line1, c.city, stateZip].filter(Boolean);
+  if (segments.length >= 2) return segments.join(', ');
+  return c.displayName || line1 || '';
 }
 
-function estimateFallbackLeg(coordA, coordB) {
-  const straight = haversineMiles(coordA, coordB);
-  if (straight < 0.08) {
-    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
-  }
-  const roadMiles = Number((straight * 1.24).toFixed(1));
-  if (roadMiles <= 0.55) {
-    return {
-      distanceMiles: roadMiles,
-      durationMinutes: Math.max(3, Math.round((roadMiles / 3) * 60)),
-      mode: 'walking',
-      estimated: true
-    };
-  }
-  const avgMph = roadMiles < 3 ? 22 : roadMiles < 12 ? 34 : 54;
-  const mins = Math.max(4, Math.round((roadMiles / avgMph) * 60) + 3);
-  return {
-    distanceMiles: roadMiles,
-    durationMinutes: mins,
-    mode: 'driving',
-    estimated: true
+const US_STATE_ABBR = {
+  california: 'CA', nevada: 'NV', arizona: 'AZ', utah: 'UT', oregon: 'OR', washington: 'WA',
+  texas: 'TX', florida: 'FL', 'new york': 'NY', colorado: 'CO', hawaii: 'HI', illinois: 'IL',
+  georgia: 'GA', massachusetts: 'MA', virginia: 'VA', 'north carolina': 'NC', tennessee: 'TN'
+};
+
+function toStateShort(stateStr) {
+  const s = String(stateStr || '').trim();
+  if (s.length === 2) return s.toUpperCase();
+  return US_STATE_ABBR[s.toLowerCase()] || s;
+}
+
+function parseNominatimCandidate(item) {
+  const lat = Number(item?.lat);
+  const lng = Number(item?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const addr = item.address || {};
+  const city = addr.city || addr.town || addr.village || addr.hamlet || addr.municipality || '';
+  const state = addr.state || '';
+  const postcode = String(addr.postcode || '').split('-')[0].trim();
+  const houseNumber = String(addr.house_number || '').trim();
+  const street = addr.road || addr.pedestrian || addr.footway || '';
+  const name = item.name || addr.amenity || addr.tourism || addr.hotel || addr.leisure || '';
+
+  const cand = {
+    lat,
+    lng,
+    name,
+    houseNumber,
+    street,
+    city,
+    state,
+    stateShort: toStateShort(state),
+    postcode,
+    displayName: item.display_name || '',
+    source: 'nominatim'
   };
+  cand.formatted = formatCandidateLabel(cand);
+  return cand;
 }
 
-function buildRouteCacheKey(fromStr, toStr) {
-  const a = normalizeLocKey(extractLocationText(fromStr));
-  const b = normalizeLocKey(extractLocationText(toStr));
-  return `${a}__TO__${b}`;
-}
+function parsePhotonCandidate(feature) {
+  const coords = feature?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const p = feature.properties || {};
+  const city = p.city || p.town || p.village || p.locality || p.county || '';
+  const state = p.state || '';
+  const postcode = String(p.postcode || '').split('-')[0].trim();
+  const houseNumber = String(p.housenumber || '').trim();
+  const street = p.street || '';
+  const name = p.name || '';
 
-/**
- * Synchronous lookup for immediate UI rendering
- */
-export function getCachedTravelLeg(fromLoc, toLoc) {
-  const fromClean = extractLocationText(fromLoc);
-  const toClean = extractLocationText(toLoc);
-  if (!fromClean || !toClean) return null;
-
-  if (normalizeLocKey(fromClean) === normalizeLocKey(toClean)) {
-    return {
-      fromLocation: fromClean,
-      toLocation: toClean,
-      distanceMiles: 0,
-      durationMinutes: 0,
-      mode: 'same',
-      status: 'ready'
-    };
-  }
-
-  const key = buildRouteCacheKey(fromClean, toClean);
-  if (routeMemoryCache.has(key)) {
-    return {
-      fromLocation: fromClean,
-      toLocation: toClean,
-      ...routeMemoryCache.get(key),
-      status: 'ready'
-    };
-  }
-
-  if (failedRouteKeys.has(key)) {
-    return {
-      fromLocation: fromClean,
-      toLocation: toClean,
-      distanceMiles: null,
-      durationMinutes: null,
-      mode: 'driving',
-      status: 'unavailable'
-    };
-  }
-
-  const coordA = parseDirectCoords(fromClean) || geoMemoryCache.get(normalizeLocKey(fromClean)) || (!looksLikeStreetAddress(fromClean) ? lookupPresetCoordinates(fromClean) : null);
-  const coordB = parseDirectCoords(toClean) || geoMemoryCache.get(normalizeLocKey(toClean)) || (!looksLikeStreetAddress(toClean) ? lookupPresetCoordinates(toClean) : null);
-
-  if (coordA && coordB) {
-    const est = estimateFallbackLeg(coordA, coordB);
-    return {
-      fromLocation: fromClean,
-      toLocation: toClean,
-      ...est,
-      status: 'estimated'
-    };
-  }
-
-  return {
-    fromLocation: fromClean,
-    toLocation: toClean,
-    distanceMiles: null,
-    durationMinutes: null,
-    mode: 'driving',
-    status: 'loading'
+  const cand = {
+    lat,
+    lng,
+    name,
+    houseNumber,
+    street,
+    city,
+    state,
+    stateShort: toStateShort(state),
+    postcode,
+    displayName: [name, [houseNumber, street].filter(Boolean).join(' '), city, state, postcode].filter(Boolean).join(', '),
+    source: 'photon'
   };
+  cand.formatted = formatCandidateLabel(cand);
+  return cand;
 }
 
-// Polite Nominatim rate-limiter queue (avoids 429 blocks)
-let nominatimQueue = Promise.resolve();
-function queryNominatimPolite(query) {
-  const run = async () => {
-    await new Promise((r) => setTimeout(r, 350));
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
-    const list = await fetchJsonWithTimeout(url, 5500, { headers: { Accept: 'application/json' } });
-    if (Array.isArray(list) && list[0]) {
-      const lat = Number(list[0].lat);
-      const lng = Number(list[0].lon);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+function scoreCandidate(cand, expected) {
+  let score = 0;
+  const dispLow = normalizeLocKey(cand.displayName);
+  const candStreetLow = normalizeLocKey(cand.street);
+  const candCityLow = normalizeLocKey(cand.city);
+  const candHouseLow = normalizeLocKey(cand.houseNumber);
+  const candZip = String(cand.postcode || '').slice(0, 5);
+
+  if (expected.houseNumber) {
+    if (candHouseLow && candHouseLow === expected.houseNumber) {
+      score += 65; // Exact house number match!
+    } else if (candHouseLow && candHouseLow !== expected.houseNumber) {
+      score -= 40; // Wrong house number
+    } else {
+      score -= 22; // No house number (dropped on street midpoint — causes 2.8 mi bug!)
     }
-    return null;
+  }
+
+  if (expected.streetCore) {
+    if (candStreetLow.includes(expected.streetCore) || dispLow.includes(expected.streetCore)) {
+      score += 25;
+    } else {
+      score -= 20;
+    }
+  }
+
+  if (expected.zip) {
+    if (candZip && candZip === expected.zip) {
+      score += 40;
+    } else if (candZip && candZip !== expected.zip) {
+      score -= 50;
+    }
+  }
+
+  if (expected.city) {
+    if (candCityLow === expected.city || candCityLow.includes(expected.city) || dispLow.includes(expected.city)) {
+      score += 25;
+    } else {
+      score -= 35;
+    }
+  }
+
+  return score;
+}
+
+// Polite Nominatim queue (respects 1 req/sec policy so we never get 429 blocked)
+let nominatimQueue = Promise.resolve();
+function queryNominatimCandidates(query, limit = 5) {
+  const run = async () => {
+    await new Promise((r) => setTimeout(r, 420));
+    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=${limit}&q=${encodeURIComponent(query)}`;
+    const list = await fetchJsonWithTimeout(url, 6000, { headers: { Accept: 'application/json' } });
+    if (!Array.isArray(list)) return [];
+    return list.map(parseNominatimCandidate).filter(Boolean);
   };
   const next = nominatimQueue.then(run, run);
-  nominatimQueue = next.catch(() => null);
+  nominatimQueue = next.catch(() => []);
   return next;
 }
 
-async function queryPhoton(query) {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=1`;
+async function queryPhotonCandidates(query, limit = 6) {
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=${limit}`;
   const data = await fetchJsonWithTimeout(url, 5000);
-  const coords = data?.features?.[0]?.geometry?.coordinates;
-  if (Array.isArray(coords) && coords.length >= 2) {
-    const lng = Number(coords[0]);
-    const lat = Number(coords[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-  }
-  return null;
+  const features = data?.features;
+  if (!Array.isArray(features)) return [];
+  return features.map(parsePhotonCandidate).filter(Boolean);
 }
 
 async function queryOpenMeteoCity(cityQuery) {
@@ -565,26 +614,105 @@ async function queryOpenMeteoCity(cityQuery) {
   const data = await fetchJsonWithTimeout(url, 4500);
   const place = data?.results?.[0];
   if (place && Number.isFinite(Number(place.latitude)) && Number.isFinite(Number(place.longitude))) {
-    return { lat: Number(place.latitude), lng: Number(place.longitude) };
+    return {
+      lat: Number(place.latitude),
+      lng: Number(place.longitude),
+      formatted: [place.name, place.admin1].filter(Boolean).join(', '),
+      exactHouseMatch: false
+    };
   }
   return null;
 }
 
-async function geocodeLocation(rawLoc, dayHint = '') {
+/**
+ * Live Address Autocomplete Suggestions for the Add/Edit Stop Modal
+ */
+export async function searchAddressSuggestions(rawQuery, dayHint = '') {
+  const cleaned = cleanAddressText(rawQuery);
+  if (cleaned.length < 3) return [];
+
+  const isStreet = looksLikeStreetAddress(cleaned);
+  const hasRegion = hasCityOrRegion(cleaned);
+  const queryWithHint = (!hasRegion && dayHint && !normalizeLocKey(cleaned).includes(normalizeLocKey(dayHint)))
+    ? `${cleaned}, ${dayHint}`
+    : cleaned;
+
+  const expected = parseExpectedAddressParts(cleaned);
+  let candidates = [];
+
+  if (isStreet) {
+    // Street addresses: query Nominatim (exact US house numbers) + Photon in parallel
+    const [nomRes, phoRes] = await Promise.all([
+      queryNominatimCandidates(queryWithHint, 5),
+      queryPhotonCandidates(queryWithHint, 5)
+    ]);
+    candidates = [...nomRes, ...phoRes];
+  } else {
+    // Place/Landmark names: Photon is super fast for POIs; add Nominatim if sparse
+    candidates = await queryPhotonCandidates(queryWithHint, 6);
+    if (candidates.length < 2) {
+      const nomRes = await queryNominatimCandidates(queryWithHint, 4);
+      candidates = [...candidates, ...nomRes];
+    }
+  }
+
+  // Score, deduplicate, and return top 5 verified suggestions
+  const scored = candidates
+    .map((c) => ({
+      ...c,
+      score: scoreCandidate(c, expected),
+      exactHouseMatch: Boolean(expected.houseNumber && normalizeLocKey(c.houseNumber) === expected.houseNumber)
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  const unique = [];
+  const seenLabels = new Set();
+
+  for (const item of scored) {
+    const label = item.formatted || item.displayName;
+    const key = normalizeLocKey(label);
+    if (!label || seenLabels.has(key)) continue;
+    seenLabels.add(key);
+    unique.push({
+      label,
+      sublabel: item.name && !normalizeLocKey(label).includes(normalizeLocKey(item.name)) ? item.name : [item.city, item.stateShort, item.postcode].filter(Boolean).join(', '),
+      lat: item.lat,
+      lng: item.lng,
+      exactHouseMatch: item.exactHouseMatch,
+      source: item.source
+    });
+    if (unique.length >= 5) break;
+  }
+
+  return unique;
+}
+
+/**
+ * Detailed Geocoding with Strict Street-Address Verification
+ */
+async function geocodeLocationDetailed(rawLoc, dayHint = '') {
   const cleaned = extractLocationText(rawLoc);
   if (!cleaned) return null;
 
   const direct = parseDirectCoords(cleaned);
-  if (direct) return direct;
+  if (direct) {
+    return { ...direct, formatted: cleaned, exactHouseMatch: true };
+  }
 
   const normKey = normalizeLocKey(cleaned);
-  if (geoMemoryCache.has(normKey)) return geoMemoryCache.get(normKey);
+  if (geoMemoryCache.has(normKey)) {
+    return geoMemoryCache.get(normKey);
+  }
 
-  if (!looksLikeStreetAddress(cleaned)) {
-    const exactPreset = lookupPresetCoordinates(cleaned);
-    if (exactPreset && !cleaned.includes(' ')) {
-      geoMemoryCache.set(normKey, exactPreset);
-      return exactPreset;
+  const isStreet = looksLikeStreetAddress(cleaned);
+
+  // Only short single-word/city presets skip network
+  if (!isStreet) {
+    const exactPreset = PRESET_COORDINATES[normKey];
+    if (exactPreset) {
+      const res = { ...exactPreset, formatted: cleaned, exactHouseMatch: false };
+      geoMemoryCache.set(normKey, res);
+      return res;
     }
   }
 
@@ -596,38 +724,101 @@ async function geocodeLocation(rawLoc, dayHint = '') {
       ? `${cleaned}, ${dayHint}`
       : cleaned;
 
-    const saveCoord = (coord) => {
-      geoMemoryCache.set(normKey, coord);
+    const expected = parseExpectedAddressParts(cleaned);
+
+    const saveResult = (res) => {
+      geoMemoryCache.set(normKey, res);
       saveCacheToStorage(STORAGE_GEO_KEY, geoMemoryCache);
-      return coord;
+      return res;
     };
 
-    let coord = await queryPhoton(primaryQuery);
-    if (coord) return saveCoord(coord);
+    const pickBest = (list) => {
+      if (!list.length) return null;
+      const ranked = list
+        .map((c) => ({
+          ...c,
+          score: scoreCandidate(c, expected),
+          exactHouseMatch: Boolean(expected.houseNumber && normalizeLocKey(c.houseNumber) === expected.houseNumber)
+        }))
+        .sort((a, b) => b.score - a.score);
+      return ranked[0];
+    };
 
-    coord = await queryNominatimPolite(primaryQuery);
-    if (coord) return saveCoord(coord);
+    if (isStreet) {
+      // 1. Nominatim FIRST for exact US street house numbers (prevents 2.8 mi street-center error!)
+      const nomList = await queryNominatimCandidates(primaryQuery, 5);
+      const bestNom = pickBest(nomList);
+      if (bestNom && (bestNom.exactHouseMatch || bestNom.score >= 45)) {
+        return saveResult({
+          lat: bestNom.lat,
+          lng: bestNom.lng,
+          formatted: bestNom.formatted || cleaned,
+          exactHouseMatch: bestNom.exactHouseMatch
+        });
+      }
 
-    if (primaryQuery !== cleaned) {
-      coord = await queryPhoton(cleaned);
-      if (coord) return saveCoord(coord);
+      // 2. Photon SECOND with strict scoring
+      const phoList = await queryPhotonCandidates(primaryQuery, 6);
+      const combinedBest = pickBest([...nomList, ...phoList]);
+      if (combinedBest && combinedBest.score >= 15) {
+        return saveResult({
+          lat: combinedBest.lat,
+          lng: combinedBest.lng,
+          formatted: combinedBest.formatted || cleaned,
+          exactHouseMatch: combinedBest.exactHouseMatch
+        });
+      }
+    } else {
+      // Non-street landmark / business / city: Photon first, Nominatim second
+      const phoList = await queryPhotonCandidates(primaryQuery, 6);
+      const bestPho = pickBest(phoList);
+      if (bestPho && bestPho.score >= 0) {
+        return saveResult({
+          lat: bestPho.lat,
+          lng: bestPho.lng,
+          formatted: bestPho.formatted || cleaned,
+          exactHouseMatch: false
+        });
+      }
+
+      const nomList = await queryNominatimCandidates(primaryQuery, 5);
+      const bestNom = pickBest(nomList);
+      if (bestNom && bestNom.score >= -10) {
+        return saveResult({
+          lat: bestNom.lat,
+          lng: bestNom.lng,
+          formatted: bestNom.formatted || cleaned,
+          exactHouseMatch: false
+        });
+      }
     }
 
+    // 3. City / ZIP fallback so routing never stays broken
     const { remainder, cityOnly } = extractCityFallback(cleaned);
     if (remainder) {
-      coord = await queryPhoton(remainder);
-      if (coord) return saveCoord(coord);
+      const remList = await queryPhotonCandidates(remainder, 3);
+      if (remList[0]) {
+        return saveResult({
+          lat: remList[0].lat,
+          lng: remList[0].lng,
+          formatted: remList[0].formatted || remainder,
+          exactHouseMatch: false,
+          cityFallback: true
+        });
+      }
     }
     if (cityOnly) {
-      coord = await queryOpenMeteoCity(cityOnly);
-      if (coord) return saveCoord(coord);
-    } else if (!looksLikeStreetAddress(cleaned)) {
-      coord = await queryOpenMeteoCity(cleaned.split(',')[0].trim());
-      if (coord) return saveCoord(coord);
+      const om = await queryOpenMeteoCity(cityOnly);
+      if (om) return saveResult({ ...om, cityFallback: true });
+    } else if (!isStreet) {
+      const om = await queryOpenMeteoCity(cleaned.split(',')[0].trim());
+      if (om) return saveResult({ ...om, cityFallback: true });
     }
 
     const preset = lookupPresetCoordinates(cleaned);
-    if (preset) return saveCoord(preset);
+    if (preset) {
+      return saveResult({ ...preset, formatted: cleaned, exactHouseMatch: false, cityFallback: true });
+    }
 
     return null;
   })();
@@ -640,7 +831,163 @@ async function geocodeLocation(rawLoc, dayHint = '') {
   }
 }
 
-async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
+/**
+ * Verify a user-entered address before saving (used by Add/Edit Stop modal)
+ */
+export async function verifyAddress(rawLoc, dayHint = '') {
+  const cleaned = extractLocationText(rawLoc);
+  if (!cleaned) {
+    return { verified: false, message: 'Enter an address or place name to verify.' };
+  }
+
+  const result = await geocodeLocationDetailed(cleaned, dayHint);
+  if (!result) {
+    return {
+      verified: false,
+      message: 'Address not found — try adding the city, state, or ZIP code.'
+    };
+  }
+
+  const isStreet = looksLikeStreetAddress(cleaned);
+  if (isStreet && result.cityFallback) {
+    return {
+      verified: false,
+      partial: true,
+      lat: result.lat,
+      lng: result.lng,
+      formatted: result.formatted,
+      message: `Exact street number not found; pinned near ${result.formatted}. Double-check spelling.`
+    };
+  }
+
+  return {
+    verified: true,
+    exactHouseMatch: Boolean(result.exactHouseMatch),
+    lat: result.lat,
+    lng: result.lng,
+    formatted: result.formatted || cleaned,
+    message: result.exactHouseMatch
+      ? `Verified exact address: ${result.formatted || cleaned}`
+      : `Verified location: ${result.formatted || cleaned}`
+  };
+}
+
+export function haversineMiles(a, b) {
+  const R = 3958.7613;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function estimateFallbackLeg(coordA, coordB, requestedMode = 'auto') {
+  const straight = haversineMiles(coordA, coordB);
+  if (straight < 0.06) {
+    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
+  }
+
+  const useWalk = requestedMode === 'walk' || (requestedMode === 'auto' && straight <= 0.55);
+  if (useWalk) {
+    const walkMiles = Number((straight * 1.18).toFixed(1));
+    return {
+      distanceMiles: walkMiles,
+      durationMinutes: Math.max(2, Math.round((walkMiles / 3.0) * 60)),
+      mode: 'walking',
+      estimated: true
+    };
+  }
+
+  const roadMiles = Number((straight * 1.24).toFixed(1));
+  const avgMph = roadMiles < 3 ? 22 : roadMiles < 12 ? 34 : 54;
+  const mins = Math.max(3, Math.round((roadMiles / avgMph) * 60) + 2);
+  return {
+    distanceMiles: roadMiles,
+    durationMinutes: mins,
+    mode: 'driving',
+    estimated: true
+  };
+}
+
+function buildRouteCacheKey(fromStr, toStr, requestedMode = 'auto') {
+  const a = normalizeLocKey(extractLocationText(fromStr));
+  const b = normalizeLocKey(extractLocationText(toStr));
+  return `${a}__TO__${b}__M_${requestedMode || 'auto'}`;
+}
+
+/**
+ * Synchronous lookup for immediate UI rendering
+ */
+export function getCachedTravelLeg(fromLoc, toLoc, requestedMode = 'auto', fromCoords = null, toCoords = null) {
+  const fromClean = extractLocationText(fromLoc);
+  const toClean = extractLocationText(toLoc);
+  if (!fromClean || !toClean) return null;
+
+  if (normalizeLocKey(fromClean) === normalizeLocKey(toClean)) {
+    return {
+      fromLocation: fromClean,
+      toLocation: toClean,
+      distanceMiles: 0,
+      durationMinutes: 0,
+      mode: 'same',
+      requestedMode,
+      status: 'ready'
+    };
+  }
+
+  const key = buildRouteCacheKey(fromClean, toClean, requestedMode);
+  if (routeMemoryCache.has(key)) {
+    return {
+      fromLocation: fromClean,
+      toLocation: toClean,
+      requestedMode,
+      ...routeMemoryCache.get(key),
+      status: 'ready'
+    };
+  }
+
+  if (failedRouteKeys.has(key)) {
+    return {
+      fromLocation: fromClean,
+      toLocation: toClean,
+      distanceMiles: null,
+      durationMinutes: null,
+      mode: requestedMode === 'walk' ? 'walking' : 'driving',
+      requestedMode,
+      status: 'unavailable'
+    };
+  }
+
+  const cachedA = fromCoords || parseDirectCoords(fromClean) || geoMemoryCache.get(normalizeLocKey(fromClean)) || (!looksLikeStreetAddress(fromClean) ? PRESET_COORDINATES[normalizeLocKey(fromClean)] : null);
+  const cachedB = toCoords || parseDirectCoords(toClean) || geoMemoryCache.get(normalizeLocKey(toClean)) || (!looksLikeStreetAddress(toClean) ? PRESET_COORDINATES[normalizeLocKey(toClean)] : null);
+
+  if (cachedA && cachedB) {
+    const est = estimateFallbackLeg(cachedA, cachedB, requestedMode);
+    return {
+      fromLocation: fromClean,
+      toLocation: toClean,
+      requestedMode,
+      ...est,
+      status: 'estimated'
+    };
+  }
+
+  return {
+    fromLocation: fromClean,
+    toLocation: toClean,
+    distanceMiles: null,
+    durationMinutes: null,
+    mode: requestedMode === 'walk' ? 'walking' : 'driving',
+    requestedMode,
+    status: 'loading'
+  };
+}
+
+async function resolveRouteLeg(fromLoc, toLoc, dayHint = '', requestedMode = 'auto', fromCoords = null, toCoords = null) {
   const fromClean = extractLocationText(fromLoc);
   const toClean = extractLocationText(toLoc);
   if (!fromClean || !toClean) return null;
@@ -649,13 +996,14 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
     return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
   }
 
-  const key = buildRouteCacheKey(fromClean, toClean);
+  const modePref = ['auto', 'drive', 'walk'].includes(requestedMode) ? requestedMode : 'auto';
+  const key = buildRouteCacheKey(fromClean, toClean, modePref);
   if (routeMemoryCache.has(key)) return routeMemoryCache.get(key);
   if (pendingRouteRequests.has(key)) return pendingRouteRequests.get(key);
 
   const promise = (async () => {
-    const coordA = await geocodeLocation(fromClean, dayHint);
-    const coordB = await geocodeLocation(toClean, dayHint);
+    const coordA = fromCoords || await geocodeLocationDetailed(fromClean, dayHint);
+    const coordB = toCoords || await geocodeLocationDetailed(toClean, dayHint);
 
     if (!coordA || !coordB) {
       failedRouteKeys.add(key);
@@ -665,33 +1013,51 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
     failedRouteKeys.delete(key);
 
     const straight = haversineMiles(coordA, coordB);
-    if (straight < 0.08) {
+    if (straight < 0.06) {
       const sameRes = { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
       routeMemoryCache.set(key, sameRes);
       saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
       return sameRes;
     }
 
+    // Decide Walking vs Driving (Auto uses Walking when <= 0.55 mi straight-line, e.g., 4050 University Ave -> 3649 Mission Inn Ave!)
+    const shouldWalk = modePref === 'walk' || (modePref === 'auto' && straight <= 0.55);
+
+    if (shouldWalk) {
+      // 1. Try real OSRM Pedestrian Footpath Router
+      const footUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=false`;
+      const footData = await fetchJsonWithTimeout(footUrl, 4500);
+      const footRoute = footData?.routes?.[0];
+      if (footRoute && Number.isFinite(footRoute.distance)) {
+        const miles = Number((footRoute.distance / 1609.344).toFixed(1));
+        const mins = Math.max(2, Math.round((miles / 3.0) * 60)); // Google-Maps-aligned 3.0 mph walking speed
+        const resolved = { distanceMiles: miles, durationMinutes: mins, mode: 'walking', estimated: false };
+        routeMemoryCache.set(key, resolved);
+        saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
+        return resolved;
+      }
+
+      // 2. Fallback walking estimate if foot router is busy
+      const walkFallback = estimateFallbackLeg(coordA, coordB, 'walk');
+      routeMemoryCache.set(key, walkFallback);
+      saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
+      return walkFallback;
+    }
+
+    // Driving mode: Live OSRM Road Router
     const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=false`;
     const data = await fetchJsonWithTimeout(osrmUrl, 5500);
     const route = data?.routes?.[0];
     if (route && Number.isFinite(route.distance) && Number.isFinite(route.duration)) {
       const miles = Number((route.distance / 1609.344).toFixed(1));
-      let mins = Math.max(1, Math.round(route.duration / 60));
-      let mode = 'driving';
-
-      if (miles <= 0.5) {
-        mode = 'walking';
-        mins = Math.max(3, Math.round((miles / 3) * 60));
-      }
-
-      const resolved = { distanceMiles: miles, durationMinutes: mins, mode, estimated: false };
+      const mins = Math.max(1, Math.round(route.duration / 60));
+      const resolved = { distanceMiles: miles, durationMinutes: mins, mode: 'driving', estimated: false };
       routeMemoryCache.set(key, resolved);
       saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
       return resolved;
     }
 
-    const fallback = estimateFallbackLeg(coordA, coordB);
+    const fallback = estimateFallbackLeg(coordA, coordB, 'drive');
     routeMemoryCache.set(key, fallback);
     saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
     return fallback;
@@ -706,40 +1072,42 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '') {
 }
 
 /**
- * Helper: Build the ordered list of effective locations for a day,
- * automatically inheriting the previous day's ending location for stop #1
- * if the user did not enter a location on stop #1.
+ * Helper: Build the ordered list of effective locations & verified coords for a day,
+ * automatically inheriting the previous day's ending location for stop #1 if blank.
  */
-function resolveDayLocationChain(day, prevDayEndLocation = '') {
+function resolveDayLocationChain(day, prevDayEnd = { text: '', coords: null }) {
   const events = Array.isArray(day?.events) ? day.events : [];
-  const prevClean = String(prevDayEndLocation || '').trim();
+  const prevText = String(prevDayEnd?.text || '').trim();
+  const prevCoords = prevDayEnd?.coords || null;
   let inheritedStartLocation = '';
   let inheritedEventId = null;
 
-  const effectiveLocations = events.map((ev, idx) => {
+  const effectiveEntries = events.map((ev, idx) => {
     const ownLoc = String(ev?.location || '').trim();
-    if (ownLoc) return ownLoc;
-    if (idx === 0 && prevClean) {
-      inheritedStartLocation = prevClean;
-      inheritedEventId = ev.id;
-      return prevClean;
+    if (ownLoc) {
+      return { text: ownLoc, coords: ev.locationCoords || null };
     }
-    return '';
+    if (idx === 0 && prevText) {
+      inheritedStartLocation = prevText;
+      inheritedEventId = ev.id;
+      return { text: prevText, coords: prevCoords };
+    }
+    return { text: '', coords: null };
   });
 
-  let endLocation = prevClean;
-  for (let i = effectiveLocations.length - 1; i >= 0; i--) {
-    if (effectiveLocations[i]) {
-      endLocation = effectiveLocations[i];
+  let endEntry = { text: prevText, coords: prevCoords };
+  for (let i = effectiveEntries.length - 1; i >= 0; i--) {
+    if (effectiveEntries[i].text) {
+      endEntry = effectiveEntries[i];
       break;
     }
   }
 
   return {
-    effectiveLocations,
+    effectiveEntries,
     inheritedStartLocation,
     inheritedEventId,
-    endLocation
+    endEntry
   };
 }
 
@@ -751,34 +1119,43 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
 
   const jobs = [];
   const seenKeys = new Set();
-  let prevDayEndLoc = '';
+  let prevDayEnd = { text: '', coords: null };
 
   trip.days.forEach((day) => {
     const dayHint = day.location || '';
-    const { effectiveLocations, endLocation } = resolveDayLocationChain(day, prevDayEndLoc);
+    const { effectiveEntries, endEntry } = resolveDayLocationChain(day, prevDayEnd);
 
-    let lastLoc = '';
-    effectiveLocations.forEach((loc) => {
-      if (loc) {
-        if (lastLoc && normalizeLocKey(extractLocationText(lastLoc)) !== normalizeLocKey(extractLocationText(loc))) {
-          const k = buildRouteCacheKey(lastLoc, loc);
+    let lastEntry = null;
+    (day.events || []).forEach((ev, idx) => {
+      const entry = effectiveEntries[idx];
+      if (entry?.text) {
+        if (lastEntry && normalizeLocKey(extractLocationText(lastEntry.text)) !== normalizeLocKey(extractLocationText(entry.text))) {
+          const modePref = ev.travelMode || 'auto';
+          const k = buildRouteCacheKey(lastEntry.text, entry.text, modePref);
           if (!routeMemoryCache.has(k) && !seenKeys.has(k)) {
             seenKeys.add(k);
             failedRouteKeys.delete(k);
-            jobs.push({ from: lastLoc, to: loc, hint: dayHint });
+            jobs.push({
+              from: lastEntry.text,
+              to: entry.text,
+              fromCoords: lastEntry.coords,
+              toCoords: entry.coords,
+              hint: dayHint,
+              modePref
+            });
           }
         }
-        lastLoc = loc;
+        lastEntry = entry;
       }
     });
 
-    prevDayEndLoc = endLocation;
+    prevDayEnd = endEntry;
   });
 
   if (jobs.length === 0) return;
 
   for (const job of jobs) {
-    await resolveRouteLeg(job.from, job.to, job.hint);
+    await resolveRouteLeg(job.from, job.to, job.hint, job.modePref, job.fromCoords, job.toCoords);
     onUpdate();
   }
 }
@@ -791,15 +1168,17 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
 
 function getTravelMinutesBetweenEvents(prevEv, nextEv) {
   if (!prevEv?.location || !nextEv?.location) return 0;
-  const leg = getCachedTravelLeg(prevEv.location, nextEv.location);
+  const leg = getCachedTravelLeg(
+    prevEv.location,
+    nextEv.location,
+    nextEv.travelMode || 'auto',
+    prevEv.locationCoords || null,
+    nextEv.locationCoords || null
+  );
   if (!leg || !Number.isFinite(leg.durationMinutes)) return 0;
   return leg.durationMinutes;
 }
 
-/**
- * Ripple all following FLEXIBLE activities forward from `startIndex` so none overlap.
- * FIXED activities (or activities with a Reservation/Appointment Time) NEVER move automatically.
- */
 export function rippleFlexibleActivitiesFrom(day, startIndex = 0) {
   if (!day || !Array.isArray(day.events) || day.events.length === 0) return 0;
   normalizeDaySchedules(day);
@@ -825,9 +1204,6 @@ export function rippleFlexibleActivitiesFrom(day, startIndex = 0) {
   return movedCount;
 }
 
-/**
- * Reorder an activity within the same day (via drag-and-drop or up/down arrows)
- */
 export function reorderEventInDay(day, eventId, targetIndex) {
   if (!day || !Array.isArray(day.events)) return { moved: false, shiftedCount: 0 };
   normalizeDaySchedules(day);
@@ -858,9 +1234,6 @@ export function reorderEventInDay(day, eventId, targetIndex) {
   return { moved: true, shiftedCount, event: movedEv };
 }
 
-/**
- * Move an activity directly to a new Start Time Slot (in minutes)
- */
 export function moveEventToTimeSlot(day, eventId, newStartMinutes) {
   if (!day || !Array.isArray(day.events)) return { moved: false, shiftedCount: 0 };
   normalizeDaySchedules(day);
@@ -886,9 +1259,6 @@ export function moveEventToTimeSlot(day, eventId, newStartMinutes) {
   return { moved: true, shiftedCount, event: ev };
 }
 
-/**
- * Drag an activity from one day to another day (at a specific index or end of day)
- */
 export function moveEventAcrossDays(sourceDay, targetDay, eventId, targetIndex = null) {
   if (!sourceDay || !targetDay || sourceDay.id === targetDay.id) {
     return { moved: false, shiftedCount: 0 };
@@ -922,9 +1292,6 @@ export function moveEventAcrossDays(sourceDay, targetDay, eventId, targetIndex =
   return { moved: true, shiftedCount, event: movedEv };
 }
 
-/**
- * Duplicate an activity right below itself with an auto-shifted flexible slot
- */
 export function duplicateEventInDay(day, eventId, newId) {
   if (!day || !Array.isArray(day.events)) return null;
   normalizeDaySchedules(day);
@@ -952,9 +1319,6 @@ export function duplicateEventInDay(day, eventId, newId) {
   return { copy, shiftedCount };
 }
 
-/**
- * Copy an activity to another day
- */
 export function copyEventToDay(sourceDay, targetDay, eventId, newId, keepFixedTime = false) {
   if (!sourceDay || !targetDay) return null;
   normalizeDaySchedules(sourceDay);
@@ -992,9 +1356,6 @@ export function copyEventToDay(sourceDay, targetDay, eventId, newId, keepFixedTi
   return clone;
 }
 
-/**
- * One-Click Auto-Fit: Resolves schedule conflicts in a day while keeping all Fixed Time stops locked
- */
 export function autoFitDaySchedule(day) {
   if (!day || !Array.isArray(day.events) || day.events.length < 2) return 0;
   normalizeDaySchedules(day);
@@ -1065,7 +1426,8 @@ export function autoFitDaySchedule(day) {
  * ============================================================================
  */
 
-export function analyzeDayTimeline(day, prevDayEndLocation = '') {
+export function analyzeDayTimeline(day, prevDayEnd = { text: '', coords: null }) {
+  const prevObj = typeof prevDayEnd === 'string' ? { text: prevDayEnd, coords: null } : (prevDayEnd || { text: '', coords: null });
   const result = {
     legsByEventId: new Map(),
     warningsByEventId: new Map(),
@@ -1077,39 +1439,45 @@ export function analyzeDayTimeline(day, prevDayEndLocation = '') {
     pendingCount: 0,
     inheritedStartLocation: '',
     inheritedEventId: null,
-    endLocation: String(prevDayEndLocation || '').trim()
+    endEntry: { text: String(prevObj.text || '').trim(), coords: prevObj.coords || null }
   };
 
   if (!day || !Array.isArray(day.events)) return result;
   normalizeDaySchedules(day);
 
   const {
-    effectiveLocations,
+    effectiveEntries,
     inheritedStartLocation,
     inheritedEventId,
-    endLocation
-  } = resolveDayLocationChain(day, prevDayEndLocation);
+    endEntry
+  } = resolveDayLocationChain(day, prevObj);
 
   result.inheritedStartLocation = inheritedStartLocation;
   result.inheritedEventId = inheritedEventId;
-  result.endLocation = endLocation;
+  result.endEntry = endEntry;
   result.totalEvents = day.events.length;
 
   let lastLocatedIndex = -1;
-  let lastLocatedStr = '';
+  let lastLocatedEntry = null;
 
   day.events.forEach((ev, idx) => {
     if (ev.completed) result.completedCount++;
 
     const prevEv = idx > 0 ? day.events[idx - 1] : null;
     const prevEnd = prevEv ? prevEv.startMinutes + prevEv.durationMinutes : null;
-    const effLoc = effectiveLocations[idx];
+    const effEntry = effectiveEntries[idx];
 
     let travelMinsForDirectCheck = 0;
 
-    if (effLoc) {
-      if (lastLocatedStr) {
-        const leg = getCachedTravelLeg(lastLocatedStr, effLoc);
+    if (effEntry?.text) {
+      if (lastLocatedEntry?.text) {
+        const leg = getCachedTravelLeg(
+          lastLocatedEntry.text,
+          effEntry.text,
+          ev.travelMode || 'auto',
+          lastLocatedEntry.coords,
+          effEntry.coords
+        );
         if (leg) {
           const isDirectPrev = lastLocatedIndex === idx - 1;
           const neededTravel = Number.isFinite(leg.durationMinutes) ? leg.durationMinutes : 0;
@@ -1142,6 +1510,8 @@ export function analyzeDayTimeline(day, prevDayEndLocation = '') {
 
           result.legsByEventId.set(ev.id, {
             ...leg,
+            eventId: ev.id,
+            dayId: day.id,
             skippedUnlocatedStops: !isDirectPrev,
             availableMinutes,
             shortageMinutes,
@@ -1151,7 +1521,7 @@ export function analyzeDayTimeline(day, prevDayEndLocation = '') {
         }
       }
       lastLocatedIndex = idx;
-      lastLocatedStr = effLoc;
+      lastLocatedEntry = effEntry;
     }
 
     if (prevEnd !== null) {
@@ -1195,10 +1565,10 @@ export function analyzeTripTimeline(trip) {
 
   if (!trip || !Array.isArray(trip.days)) return summary;
 
-  let prevDayEndLocation = '';
+  let prevDayEnd = { text: '', coords: null };
 
   trip.days.forEach((day) => {
-    const dayStats = analyzeDayTimeline(day, prevDayEndLocation);
+    const dayStats = analyzeDayTimeline(day, prevDayEnd);
     summary.perDay.set(day.id, dayStats);
     summary.totalDistanceMiles += dayStats.totalDistanceMiles;
     summary.totalTravelMinutes += dayStats.totalTravelMinutes;
@@ -1206,7 +1576,9 @@ export function analyzeTripTimeline(trip) {
     summary.completedCount += dayStats.completedCount;
     summary.totalEvents += dayStats.totalEvents;
     summary.pendingCount += dayStats.pendingCount;
-    prevDayEndLocation = dayStats.endLocation || prevDayEndLocation;
+    if (dayStats.endEntry?.text) {
+      prevDayEnd = dayStats.endEntry;
+    }
   });
 
   summary.totalDistanceMiles = Number(summary.totalDistanceMiles.toFixed(1));

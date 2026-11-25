@@ -47,7 +47,9 @@ import {
   moveEventAcrossDays,
   duplicateEventInDay,
   copyEventToDay,
-  autoFitDaySchedule
+  autoFitDaySchedule,
+  searchAddressSuggestions,
+  verifyAddress
 } from './trip-timeline-engine.js';
 
 import {
@@ -906,7 +908,7 @@ export function confirmDeleteDay(dayId) {
 
 /**
  * ============================================================================
- * SMART ITINERARY STOP MODAL (Time Slots, 0-Min Milestone, Reservation & Lock)
+ * SMART ITINERARY STOP MODAL (Time Slots, 0-Min Milestone, Verified Address)
  * ============================================================================
  */
 export function openEventModal(dayId, eventId = null, preselectedCategory = null) {
@@ -916,7 +918,6 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
   const existing = eventId ? day.events.find((e) => e.id === eventId) : null;
   if (existing) normalizeEventSchedule(existing);
 
-  // Suggest smart default start slot when adding a new stop
   let defaultStart = 9 * 60;
   if (existing) {
     defaultStart = existing.startMinutes;
@@ -927,7 +928,6 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
     defaultStart = roundUpToSlot(last.startMinutes + stepAfterLast, TIME_SLOT_STEP);
   }
 
-  // Preserve 0 min cleanly when editing a Point-in-Time stop
   const hasExistingDur = existing && existing.durationMinutes !== null && existing.durationMinutes !== undefined && Number.isFinite(Number(existing.durationMinutes));
   const defaultDuration = hasExistingDur ? Number(existing.durationMinutes) : 60;
 
@@ -935,6 +935,12 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
   const defaultFixed = Boolean(existing?.isFixed || defaultRes !== null);
   const defaultCompleted = Boolean(existing?.completed);
   const selectedCat = preselectedCategory || existing?.category || 'explore';
+  const defaultTravelMode = existing?.travelMode || 'auto';
+
+  let verifiedLocationCoords = existing?.locationCoords
+    ? { lat: Number(existing.locationCoords.lat), lng: Number(existing.locationCoords.lng) }
+    : null;
+  let initialLocationText = existing ? (existing.location || '') : '';
 
   const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
 
@@ -1031,10 +1037,41 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
           </div>
         </div>
 
-        <!-- Location Input (Drives Live Travel Time & Distance) -->
-        <div>
-          <label class="block text-xs font-semibold text-sky-300/90 mb-1">Destination / Location <span class="text-white/40 font-normal">(Auto-calculates travel time, distance &amp; Maps)</span></label>
-          <input id="evLocation" placeholder="e.g. The Mission Inn, Riverside, CA or Peaks Restaurant, Palm Springs" class="${inp} border-sky-400/25" value="${esc(existing ? (existing.location || '') : '')}" />
+        <!-- Verified Location Input with Live Suggestions & Verify Button -->
+        <div class="relative space-y-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <label class="block text-xs font-semibold text-sky-300/90">Destination / Location <span class="text-white/40 font-normal">(Pick suggestion or Verify)</span></label>
+            <select id="evTravelMode" title="Transit mode arriving at this stop" class="rounded-lg border border-white/15 bg-black/50 px-2 py-0.5 text-[11px] font-semibold text-sky-200 focus:outline-none focus:ring-1 focus:ring-sky-400/50 cursor-pointer">
+              <option value="auto" class="bg-slate-900" ${defaultTravelMode === 'auto' ? 'selected' : ''}>Transit: Auto</option>
+              <option value="drive" class="bg-slate-900" ${defaultTravelMode === 'drive' ? 'selected' : ''}>Transit: Drive</option>
+              <option value="walk" class="bg-slate-900" ${defaultTravelMode === 'walk' ? 'selected' : ''}>Transit: Walk</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <input
+              id="evLocation"
+              autocomplete="off"
+              placeholder="Type street address or place (e.g. 4050 University Ave, Riverside, CA)"
+              class="${inp} border-sky-400/25 flex-1 min-w-0"
+              value="${esc(initialLocationText)}"
+            />
+            <button
+              id="evVerifyLocBtn"
+              type="button"
+              class="px-3 py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400/40 text-xs font-semibold text-sky-100 transition-all cursor-pointer shrink-0"
+            >Verify</button>
+          </div>
+
+          <!-- Live Address Autocomplete Dropdown -->
+          <div id="evLocationSuggestions" class="hidden rounded-2xl border border-sky-400/30 bg-[#141720]/98 backdrop-blur-2xl p-1.5 space-y-1 shadow-2xl shadow-black/70 max-h-52 overflow-y-auto animate-slideDown"></div>
+
+          <!-- Verification Status Message -->
+          <div id="evLocVerifyStatus" class="text-[11px] leading-snug ${verifiedLocationCoords && initialLocationText ? 'text-emerald-300' : 'text-white/45'}">
+            ${verifiedLocationCoords && initialLocationText
+              ? '✓ Exact map pin verified for accurate distance & travel time.'
+              : 'Tip: Select a suggested address or click Verify to lock in the exact map pin.'}
+          </div>
         </div>
 
         <!-- Activity Details -->
@@ -1066,11 +1103,13 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
           const finalStart = reservationMinutes !== null ? reservationMinutes : startMinutes;
           const category = document.getElementById('evCat').value;
           const location = document.getElementById('evLocation').value.trim();
+          const travelMode = document.getElementById('evTravelMode')?.value || 'auto';
           const text = document.getElementById('evText').value.trim();
           const completed = existing ? Boolean(document.getElementById('evCompletedToggle')?.checked) : false;
 
           if (!text) return showToast('Please enter activity details', 'error');
 
+          const finalCoords = location ? verifiedLocationCoords : null;
           const snapshot = captureStartSnapshot(day);
           const formattedTime = formatTimeWindow(finalStart, durationMinutes);
           let targetId = existing?.id;
@@ -1083,6 +1122,8 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
             existing.isFixed = isFixed;
             existing.category = category;
             existing.location = location;
+            existing.locationCoords = finalCoords;
+            existing.travelMode = travelMode;
             existing.text = text;
             existing.completed = completed;
           } else {
@@ -1097,11 +1138,12 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
               completed: false,
               category,
               location,
+              locationCoords: finalCoords,
+              travelMode,
               text
             });
           }
 
-          // Keep chronological order & ripple following flexible stops
           day.events.sort((a, b) => a.startMinutes - b.startMinutes);
           const idx = day.events.findIndex((e) => e.id === targetId);
           const shiftedCount = rippleFlexibleActivitiesFrom(day, Math.max(0, idx));
@@ -1135,6 +1177,124 @@ export function openEventModal(dayId, eventId = null, preselectedCategory = null
   const previewWin = document.getElementById('evPreviewWindow');
   const previewLabel = document.getElementById('evPreviewLabel');
   const previewLock = document.getElementById('evPreviewLockBadge');
+
+  const locInp = document.getElementById('evLocation');
+  const verifyBtn = document.getElementById('evVerifyLocBtn');
+  const suggestionsBox = document.getElementById('evLocationSuggestions');
+  const statusEl = document.getElementById('evLocVerifyStatus');
+
+  let suggestTimer = null;
+  let suggestReqId = 0;
+
+  function setVerifyStatus(text, tone = 'muted') {
+    if (!statusEl) return;
+    const toneClass = tone === 'ok'
+      ? 'text-emerald-300 font-medium'
+      : tone === 'warn'
+        ? 'text-amber-300 font-medium'
+        : tone === 'error'
+          ? 'text-rose-300 font-medium'
+          : 'text-white/45';
+    statusEl.className = `text-[11px] leading-snug ${toneClass}`;
+    statusEl.innerHTML = text;
+  }
+
+  function renderSuggestions(list) {
+    if (!suggestionsBox) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      suggestionsBox.classList.add('hidden');
+      suggestionsBox.innerHTML = '';
+      return;
+    }
+
+    suggestionsBox.innerHTML = list.map((item, idx) => `
+      <button
+        type="button"
+        data-loc-sug="${idx}"
+        class="w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-sky-500/20 border border-transparent hover:border-sky-400/35 transition-all cursor-pointer"
+      >
+        <span class="text-sky-300 mt-0.5 shrink-0">${ICONS.pin}</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-xs font-semibold text-white truncate">${esc(item.label)}</div>
+          ${item.sublabel ? `<div class="text-[10px] text-white/50 truncate">${esc(item.sublabel)}</div>` : ''}
+        </div>
+        ${item.exactHouseMatch ? `<span class="px-1.5 py-0.5 rounded-md bg-emerald-500/20 border border-emerald-400/35 text-[9px] font-bold text-emerald-200 shrink-0">Exact</span>` : ''}
+      </button>
+    `).join('');
+
+    suggestionsBox.classList.remove('hidden');
+
+    suggestionsBox.querySelectorAll('[data-loc-sug]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const picked = list[Number(btn.dataset.locSug)];
+        if (!picked) return;
+        locInp.value = picked.label;
+        verifiedLocationCoords = { lat: picked.lat, lng: picked.lng };
+        suggestionsBox.classList.add('hidden');
+        setVerifyStatus(`✓ Verified address selected: ${esc(picked.label)}`, 'ok');
+      });
+    });
+  }
+
+  locInp?.addEventListener('input', () => {
+    const val = locInp.value.trim();
+    verifiedLocationCoords = null;
+    clearTimeout(suggestTimer);
+
+    if (val.length < 3 || /^https?:\/\//i.test(val)) {
+      suggestionsBox?.classList.add('hidden');
+      setVerifyStatus('Tip: Type an address to see verified suggestions or click Verify.', 'muted');
+      return;
+    }
+
+    setVerifyStatus('Searching verified addresses…', 'muted');
+    const reqId = ++suggestReqId;
+    suggestTimer = setTimeout(async () => {
+      const results = await searchAddressSuggestions(val, day.location || '');
+      if (reqId !== suggestReqId) return;
+      if (results.length > 0) {
+        renderSuggestions(results);
+        setVerifyStatus('Select a verified match below or click Verify.', 'muted');
+      } else {
+        suggestionsBox?.classList.add('hidden');
+        setVerifyStatus('No instant matches yet — include city & ZIP, then click Verify.', 'warn');
+      }
+    }, 380);
+  });
+
+  verifyBtn?.addEventListener('click', async () => {
+    const val = locInp?.value.trim() || '';
+    if (!val) {
+      setVerifyStatus('Enter an address or place name first.', 'warn');
+      return;
+    }
+    suggestionsBox?.classList.add('hidden');
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = 'Checking…';
+    setVerifyStatus('Verifying exact map pin…', 'muted');
+
+    const res = await verifyAddress(val, day.location || '');
+    verifyBtn.disabled = false;
+    verifyBtn.textContent = 'Verify';
+
+    if (res.verified) {
+      verifiedLocationCoords = { lat: res.lat, lng: res.lng };
+      const applyBtnHtml = res.formatted && res.formatted.toLowerCase() !== val.toLowerCase()
+        ? ` <button id="applyFormattedAddrBtn" type="button" class="underline text-sky-300 hover:text-white ml-1 cursor-pointer">Use "${esc(res.formatted)}"</button>`
+        : '';
+      setVerifyStatus(`✓ ${esc(res.message)}${applyBtnHtml}`, 'ok');
+      document.getElementById('applyFormattedAddrBtn')?.addEventListener('click', () => {
+        locInp.value = res.formatted;
+        setVerifyStatus(`✓ Verified address: ${esc(res.formatted)}`, 'ok');
+      });
+    } else if (res.partial) {
+      verifiedLocationCoords = { lat: res.lat, lng: res.lng };
+      setVerifyStatus(`⚠ ${esc(res.message)}`, 'warn');
+    } else {
+      verifiedLocationCoords = null;
+      setVerifyStatus(`✕ ${esc(res.message)}`, 'error');
+    }
+  });
 
   function refreshModalPreview() {
     const startVal = Number(startSel.value);
@@ -1258,7 +1418,6 @@ export function openCustomCategoriesModal(returnToEventContext = null) {
       title: 'Custom Activity Categories',
       bodyHtml: `
         <div class="space-y-4">
-          <!-- Live Animated Preview -->
           <div class="rounded-2xl bg-black/35 border border-white/15 p-3.5 flex items-center gap-3.5">
             <span id="customCatLiveIcon" class="cat-icon-badge ${selectedAnim} w-11 h-11 rounded-2xl border flex items-center justify-center shrink-0 ${(CUSTOM_CATEGORY_THEMES[selectedTheme] || CUSTOM_CATEGORY_THEMES.rose).color}">
               ${ICONS[selectedIcon]}
@@ -1270,7 +1429,6 @@ export function openCustomCategoriesModal(returnToEventContext = null) {
             </div>
           </div>
 
-          <!-- Creator Inputs -->
           <div class="space-y-3">
             <div>
               <label class="block text-xs font-semibold text-white/65 mb-1">Category Name</label>
@@ -1293,7 +1451,6 @@ export function openCustomCategoriesModal(returnToEventContext = null) {
             </div>
           </div>
 
-          <!-- Existing Custom Categories -->
           <div class="pt-2 border-t border-white/10 space-y-2">
             <div class="text-[11px] font-bold uppercase tracking-wider text-white/50">Your Saved Custom Categories (${customs.length})</div>
             <div class="space-y-1.5 max-h-40 overflow-y-auto pr-0.5">${existingHtml}</div>
@@ -1650,6 +1807,19 @@ export function toggleEventFixed(dayId, eventId) {
   }
   renderItinerary();
   scheduleCloudSave();
+}
+
+export function toggleEventTravelMode(dayId, eventId, currentRenderedMode = 'driving') {
+  const day = appStore.state.days.find((d) => d.id === dayId);
+  const ev = day?.events.find((e) => e.id === eventId);
+  if (!ev) return;
+
+  const nextMode = currentRenderedMode === 'walking' ? 'drive' : 'walk';
+  ev.travelMode = nextMode;
+  renderItinerary();
+  refreshTripTravelRoutes();
+  scheduleCloudSave();
+  showToast(`Switched leg to ${nextMode === 'walk' ? 'Walking' : 'Driving'} route`);
 }
 
 export function handleAutoFitDay(dayId) {

@@ -43,6 +43,7 @@ import {
   duplicateEvent,
   toggleEventCompleted,
   toggleEventFixed,
+  toggleEventTravelMode,
   handleAutoFitDay,
   confirmResetPlanner
 } from './trip-planner-creator.js';
@@ -74,6 +75,7 @@ registerDetailHooks({
   openCopyToDayModal,
   toggleEventCompleted,
   toggleEventFixed,
+  toggleEventTravelMode,
   handleAutoFitDay,
   openCustomCategoriesModal
 });

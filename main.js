@@ -4,10 +4,11 @@ import {
   renderStaticIcons,
   updateClock,
   setWeatherPanelExpanded,
+  toggleWeatherDayNightPreview,
+  syncLiveWeatherForActiveDay,
   setActiveCarouselIndex,
   renderCarousel,
   updateBackdropForDay,
-  syncLiveWeatherForActiveDay,
   prefetchAllDaysWeather,
   prefetchAllCardPhotos,
   refreshTripTravelRoutes,
@@ -56,13 +57,10 @@ import {
 } from './trip-planner-creator.js';
 
 /**
- * Connect Cross-Module Callbacks (Prevents Circular Imports & Keeps Forecast Synced on Edits)
+ * Connect Cross-Module Callbacks (Prevents Circular Imports)
  */
 registerPlannerHooks({
-  renderAll: () => {
-    renderAll();
-    syncLiveWeatherForActiveDay();
-  },
+  renderAll,
   renderItinerary,
   openDayModal,
   confirmDeleteDay,
@@ -151,6 +149,10 @@ function bindGlobalEvents() {
 
   document.getElementById('toggleWeatherForecastBtn')?.addEventListener('click', () => {
     setWeatherPanelExpanded(!appStore.weatherPanelExpanded);
+  });
+
+  document.getElementById('toggleDayNightBtn')?.addEventListener('click', () => {
+    toggleWeatherDayNightPreview();
   });
 
   document.getElementById('notesInput')?.addEventListener('input', (e) => {
@@ -245,8 +247,8 @@ setInterval(updateClock, 1000);
 bindGlobalEvents();
 updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0]);
 renderAll();
-syncLiveWeatherForActiveDay();
 prefetchAllDaysWeather();
+setInterval(syncLiveWeatherForActiveDay, 20 * 60 * 1000);
 prefetchAllCardPhotos();
 refreshTripTravelRoutes();
 initCloudSync();

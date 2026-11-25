@@ -26,26 +26,36 @@ export function registerMapifyHooks(overrides = {}) {
 }
 
 /**
- * Map Tile Themes (Free, Zero-API-Key Providers Matching VisionOS Dark & Daylight Views)
+ * Map Tile Themes (100% Free, Zero-API-Key Esri Basemaps Matching VisionOS Dark & Daylight Views)
  */
 const MAP_TILE_THEMES = {
   dark: {
     label: 'Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    urls: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'
+    ],
+    attribution: 'Tiles &copy; Esri',
+    maxNativeZoom: 16,
     maxZoom: 19
   },
   street: {
     label: 'Street',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    urls: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+    ],
+    attribution: 'Tiles &copy; Esri',
+    maxNativeZoom: 18,
     maxZoom: 19
   },
   satellite: {
     label: 'Satellite',
-    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    urls: [
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    ],
     attribution: 'Tiles &copy; Esri',
-    maxZoom: 18
+    maxNativeZoom: 18,
+    maxZoom: 19
   }
 };
 
@@ -63,7 +73,7 @@ const DAY_ROUTE_PALETTE = [
  */
 const mapState = {
   map: null,
-  tileLayer: null,
+  tileLayers: [],
   routeLayerGroup: null,
   markerLayerGroup: null,
   tourLayerGroup: null,
@@ -107,14 +117,20 @@ function setMapTileTheme(themeKey) {
   });
 
   if (!mapState.map || !window.L) return;
-  if (mapState.tileLayer) {
-    mapState.map.removeLayer(mapState.tileLayer);
-  }
+
+  mapState.tileLayers.forEach((layer) => mapState.map.removeLayer(layer));
+  mapState.tileLayers = [];
+
   const cfg = MAP_TILE_THEMES[themeKey];
-  mapState.tileLayer = window.L.tileLayer(cfg.url, {
-    attribution: cfg.attribution,
-    maxZoom: cfg.maxZoom
-  }).addTo(mapState.map);
+  cfg.urls.forEach((url) => {
+    const layer = window.L.tileLayer(url, {
+      attribution: cfg.attribution,
+      maxNativeZoom: cfg.maxNativeZoom || 18,
+      maxZoom: cfg.maxZoom || 19
+    }).addTo(mapState.map);
+    layer.bringToBack();
+    mapState.tileLayers.push(layer);
+  });
 }
 
 export function invalidateMapifySize() {
@@ -176,7 +192,7 @@ function ensureLeafletInitialized() {
     attributionControl: true
   });
 
-  // Add subtle bottom-right zoom buttons
+  // Add subtle top-right zoom buttons
   L.control.zoom({ position: 'topright' }).addTo(map);
 
   // Enable scroll wheel zoom when user clicks/focuses the map, disable on mouseleave
@@ -200,7 +216,6 @@ function ensureMapifyShell() {
   if (!bar) return false;
   if (bar.querySelector('#mapifyRoot')) return true;
 
-  // Upgrade container classes into the unified VisionOS Mapify card
   bar.className = 'rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/15 shadow-2xl shadow-black/45 overflow-hidden transition-all duration-300';
 
   bar.innerHTML = `
@@ -430,7 +445,6 @@ function renderMapifyBottomHud(tripStats, mapData) {
   const dayCount = Math.max(1, appStore.state.days?.length || 1);
   const avgDailyMins = Math.round(totalMins / dayCount);
 
-  // Compute drive vs walk mileage breakdown from visible/trip legs
   let driveMiles = 0;
   let walkMiles = 0;
   let legCount = 0;
@@ -449,7 +463,7 @@ function renderMapifyBottomHud(tripStats, mapData) {
     ? Math.round((tripStats.completedCount / tripStats.totalEvents) * 100)
     : 0;
   const remainingStops = Math.max(0, tripStats.totalEvents - tripStats.completedCount);
-  const circumference = 87.96; // 2 * PI * 14
+  const circumference = 87.96;
   const dashOffset = circumference - (pctDone / 100) * circumference;
 
   const hasWarnings = tripStats.warningCount > 0;
@@ -571,10 +585,8 @@ export function renderMapify(tripStats) {
   const scopeDayId = appStore.showAllDays ? null : focusedDay?.id || null;
   const mapData = getTripMapData(state, scopeDayId);
 
-  // Always update the 4-graphic bottom HUD
   renderMapifyBottomHud(tripStats, mapData);
 
-  // Update Header Scope Pill & Subtitle
   const scopePill = document.getElementById('mapifyScopePill');
   const subtitleEl = document.getElementById('mapifySubtitle');
   if (scopePill) {
@@ -627,7 +639,6 @@ export function renderMapify(tripStats) {
           ? palette.hex
           : '#38bdf8';
 
-    // Outer ambient glow line
     L.polyline(pathCoords, {
       color: strokeColor,
       weight: isWalk ? 6 : 8,
@@ -637,7 +648,6 @@ export function renderMapify(tripStats) {
       interactive: false
     }).addTo(mapState.routeLayerGroup);
 
-    // Core crisp route line
     const coreLine = L.polyline(pathCoords, {
       color: strokeColor,
       weight: isWalk ? 3.5 : 4,

@@ -306,7 +306,7 @@ export function registerPlannerHooks(overrides = {}) {
 }
 
 /**
- * Utilities: ID generator, HTML Escaping, Category Resolution, Budget & Maps Helpers
+ * Utilities: ID generator, HTML Escaping, Coordinate Normalization, Category, Budget & Maps Helpers
  */
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -319,6 +319,15 @@ export function esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+export function normalizeLocationCoords(coords) {
+  if (!coords || typeof coords !== 'object') return null;
+  const lat = Number(coords.lat);
+  const lng = Number(coords.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
 }
 
 export function getAllCategories() {
@@ -493,7 +502,7 @@ export function openConfirmDeleteModal({
 }
 
 /**
- * Initial Thanksgiving Getaway Planner State (With Time Slots & Reservations Ready)
+ * Initial Thanksgiving Getaway Planner State (With Verified Location Coords & Time Slots)
  */
 export function createInitialState() {
   const trip = {
@@ -513,7 +522,10 @@ export function createInitialState() {
         shortDay: 'FRI',
         shortDate: 'Nov 27',
         temp: '68°F',
-        location: 'Riverside',
+        location: 'Riverside, CA',
+        locationFullName: 'Riverside, California, United States',
+        locationCoords: { lat: 33.9806, lng: -117.3755 },
+        locationVerified: true,
         landmark: 'Mission Inn Hotel Riverside California',
         cardLandmark: 'Mission Inn Festival of Lights Riverside',
         scene: 'lights',
@@ -538,7 +550,10 @@ export function createInitialState() {
         shortDay: 'SAT',
         shortDate: 'Nov 28',
         temp: '74°F',
-        location: 'Palm Desert',
+        location: 'Palm Desert, CA',
+        locationFullName: 'Palm Desert, California, United States',
+        locationCoords: { lat: 33.7222, lng: -116.3745 },
+        locationVerified: true,
         landmark: 'Coachella Valley Palm Desert California',
         cardLandmark: 'The Living Desert Zoo Palm Desert',
         scene: 'desert',
@@ -567,7 +582,10 @@ export function createInitialState() {
         shortDay: 'SUN',
         shortDate: 'Nov 29',
         temp: '71°F',
-        location: 'Palm Springs',
+        location: 'Palm Springs, CA',
+        locationFullName: 'Palm Springs, California, United States',
+        locationCoords: { lat: 33.8303, lng: -116.5453 },
+        locationVerified: true,
         landmark: 'Palm Springs Aerial Tramway Mount San Jacinto',
         cardLandmark: 'Palm Springs California mountains',
         scene: 'tram',
@@ -596,7 +614,10 @@ export function createInitialState() {
         shortDay: 'MON',
         shortDate: 'Nov 30',
         temp: '69°F',
-        location: 'Cherry Valley',
+        location: 'Cherry Valley, CA',
+        locationFullName: 'Cherry Valley, California, United States',
+        locationCoords: { lat: 33.9722, lng: -116.9772 },
+        locationVerified: true,
         landmark: 'San Bernardino National Forest California',
         cardLandmark: 'Pine Forest Christmas Lights Cherry Valley',
         scene: 'farm',
@@ -688,9 +709,14 @@ export function createNewDefaultTrip({
   tripLength = '3 days / 2 nights',
   firstDeparture = 'Friday · 9:00 AM',
   hotelPlan = '2 nights',
-  startLocation = 'San Diego'
+  startLocation = 'San Diego, CA',
+  startLocationFullName = 'San Diego, California, United States',
+  startLocationCoords = { lat: 32.7157, lng: -117.1611 }
 } = {}) {
-  const loc = startLocation.trim() || 'California';
+  const loc = String(startLocation || '').trim() || 'San Diego, CA';
+  const safeCoords = normalizeLocationCoords(startLocationCoords);
+  const fullLoc = String(startLocationFullName || '').trim() || loc;
+
   const trip = {
     id: uid('trip'),
     createdAt: Date.now(),
@@ -707,10 +733,13 @@ export function createNewDefaultTrip({
         id: uid('day'),
         shortDay: 'DAY 1',
         shortDate: 'Arrival',
-        temp: '72°F',
+        temp: '--°F',
         location: loc,
-        landmark: loc,
-        cardLandmark: `${loc} sightseeing`,
+        locationFullName: fullLoc,
+        locationCoords: safeCoords,
+        locationVerified: Boolean(safeCoords),
+        landmark: fullLoc,
+        cardLandmark: `${fullLoc} sightseeing`,
         scene: 'beach',
         useScenePreset: false,
         customBgUrl: '',
@@ -721,9 +750,9 @@ export function createNewDefaultTrip({
         noteTitle: 'Arrival tip',
         noteBody: 'Confirm your hotel check-in window, parking options, and dinner reservations ahead of time.',
         events: [
-          { id: uid('ev'), time: firstDeparture || '9:00 AM', startMinutes: 9 * 60, durationMinutes: 120, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: `Depart for ${loc}. Allow buffer time for traffic and scenic stops.`, location: loc },
-          { id: uid('ev'), time: '3:00–4:00 PM', startMinutes: 15 * 60, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: `Check in to your ${loc} hotel, drop off luggage, and freshen up.`, location: loc },
-          { id: uid('ev'), time: '6:00–7:30 PM', startMinutes: 18 * 60, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: `Welcome dinner and evening stroll around ${loc}.`, location: loc }
+          { id: uid('ev'), time: firstDeparture || '9:00 AM', startMinutes: 9 * 60, durationMinutes: 120, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: `Depart for ${loc}. Allow buffer time for traffic and scenic stops.`, location: loc, locationCoords: safeCoords },
+          { id: uid('ev'), time: '3:00–4:00 PM', startMinutes: 15 * 60, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: `Check in to your ${loc} hotel, drop off luggage, and freshen up.`, location: loc, locationCoords: safeCoords },
+          { id: uid('ev'), time: '6:00–7:30 PM', startMinutes: 18 * 60, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: `Welcome dinner and evening stroll around ${loc}.`, location: loc, locationCoords: safeCoords }
         ]
       }
     ],
@@ -798,6 +827,17 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
   const base = fallbackIdx === 0 && rawTrip?.id === 'trip-thanksgiving-default'
     ? createInitialState()
     : createNewDefaultTrip();
+  const rawDays = Array.isArray(rawTrip?.days) ? rawTrip.days : base.days;
+  const normalizedDays = rawDays.map((d) => {
+    const safeCoords = normalizeLocationCoords(d?.locationCoords);
+    return {
+      ...d,
+      locationCoords: safeCoords,
+      locationFullName: typeof d?.locationFullName === 'string' ? d.locationFullName : '',
+      locationVerified: Boolean(safeCoords && d?.locationVerified !== false)
+    };
+  });
+
   const merged = {
     ...base,
     ...rawTrip,
@@ -805,7 +845,7 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     createdAt: rawTrip?.createdAt || Date.now(),
     customCategories: Array.isArray(rawTrip?.customCategories) ? rawTrip.customCategories : [],
     meta: { ...base.meta, ...(rawTrip?.meta || {}) },
-    days: Array.isArray(rawTrip?.days) ? rawTrip.days : base.days,
+    days: normalizedDays,
     checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
     budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
     notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : '',
@@ -980,7 +1020,7 @@ export async function prefetchCardPhotoForDay(day) {
     return;
   }
 
-  const query = (day.cardLandmark || `${day.location || ''} attractions`).trim();
+  const query = (day.cardLandmark || `${day.locationFullName || day.location || ''} attractions`).trim();
   const cacheKey = query.toLowerCase();
   const fallback = REAL_CARD_BACKDROPS[themeKey] || REAL_CARD_BACKDROPS.desert;
   const bgExclude = day.resolvedBgPhoto || appStore.currentBackdropUrl || REAL_THEME_BACKDROPS[themeKey] || '';
@@ -1041,7 +1081,7 @@ export async function updateBackdropForDay(day) {
     applyBackdropPhoto(fallbackPhoto);
   }
 
-  const searchTerm = (day?.landmark || day?.location || '').trim();
+  const searchTerm = (day?.landmark || day?.locationFullName || day?.location || '').trim();
   if (!searchTerm) {
     if (day) day.resolvedBgPhoto = fallbackPhoto;
     applyBackdropPhoto(fallbackPhoto);
@@ -1236,10 +1276,10 @@ export function updateClock() {
 
 /**
  * ============================================================================
- * LIVE ANIMATED 7-DAY WEATHER & AUTOMATIC SUNRISE/SUNSET DAY/NIGHT SKY ENGINE
+ * LIVE ANIMATED 7-DAY WEATHER, VERIFIED LOCATION SEARCH & AUTO DAY/NIGHT SKY
  * ============================================================================
  */
-const WEATHER_STORAGE_KEY = 'tripos_weather_cache_v3';
+const WEATHER_STORAGE_KEY = 'tripos_weather_cache_v4';
 const WEATHER_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes fresh cache
 
 const US_STATE_NAMES = {
@@ -1256,6 +1296,10 @@ const US_STATE_NAMES = {
   DC: 'district of columbia'
 };
 
+const US_STATE_CODES = Object.fromEntries(
+  Object.entries(US_STATE_NAMES).map(([code, name]) => [name, code])
+);
+
 const weatherCache = new Map();
 const pendingWeatherRequests = new Map();
 let weatherSyncRequestId = 0;
@@ -1263,6 +1307,15 @@ let lastRenderedWeatherContext = { day: null, weatherData: null, renderedIsNight
 
 function normalizeWeatherKey(locationName) {
   return String(locationName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildWeatherCacheKey(locationName, coords = null) {
+  const safeCoords = normalizeLocationCoords(coords);
+  if (safeCoords) {
+    return `coords:${safeCoords.lat.toFixed(3)},${safeCoords.lng.toFixed(3)}`;
+  }
+  const key = normalizeWeatherKey(locationName);
+  return key ? `name:${key}` : '';
 }
 
 function loadWeatherCacheFromStorage() {
@@ -1294,8 +1347,8 @@ function saveWeatherCacheToStorage() {
 
 loadWeatherCacheFromStorage();
 
-function getCachedWeatherEntry(locationName) {
-  const key = normalizeWeatherKey(locationName);
+function getCachedWeatherEntry(locationName, coords = null) {
+  const key = buildWeatherCacheKey(locationName, coords);
   if (!key) return null;
   return weatherCache.get(key) || null;
 }
@@ -1359,71 +1412,278 @@ async function fetchWeatherJson(url, timeoutMs = 6500) {
   }
 }
 
-async function resolveWeatherCoords(locationName) {
-  const cleaned = String(locationName || '').trim();
-  if (!cleaned) return null;
+function formatCoordSnippet(lat, lng) {
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lng >= 0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lng).toFixed(2)}°${ew}`;
+}
+
+function buildLocationCandidate({ name, admin1 = '', admin2 = '', country = '', countryCode = '', lat, lng, population = 0, source = 'open-meteo' }) {
+  const cleanName = String(name || '').trim();
+  const cleanAdmin1 = String(admin1 || '').trim();
+  const cleanAdmin2 = String(admin2 || '').trim();
+  const cleanCountry = String(country || '').trim();
+  const codeUpper = String(countryCode || '').trim().toUpperCase();
+  const numLat = Number(lat);
+  const numLng = Number(lng);
+
+  if (!cleanName || !Number.isFinite(numLat) || !Number.isFinite(numLng)) return null;
+
+  const isUS = codeUpper === 'US' || cleanCountry.toLowerCase() === 'united states';
+  const stateAbbr = isUS ? (US_STATE_CODES[cleanAdmin1.toLowerCase()] || cleanAdmin1) : '';
+
+  let label = cleanName;
+  if (isUS && stateAbbr) {
+    label = `${cleanName}, ${stateAbbr}`;
+  } else if (cleanCountry && cleanCountry.toLowerCase() !== cleanName.toLowerCase()) {
+    label = `${cleanName}, ${cleanCountry}`;
+  } else if (cleanAdmin1 && cleanAdmin1.toLowerCase() !== cleanName.toLowerCase()) {
+    label = `${cleanName}, ${cleanAdmin1}`;
+  }
+
+  const fullParts = [];
+  const seenLow = new Set();
+  [cleanName, cleanAdmin1, cleanCountry].forEach((part) => {
+    const low = part.toLowerCase();
+    if (part && !seenLow.has(low)) {
+      seenLow.add(low);
+      fullParts.push(part);
+    }
+  });
+  const fullName = fullParts.join(', ');
+
+  const regionParts = [];
+  const regionSeen = new Set();
+  [cleanAdmin2 && cleanAdmin2.toLowerCase() !== cleanName.toLowerCase() ? cleanAdmin2 : '', cleanAdmin1, cleanCountry].forEach((part) => {
+    const low = part.toLowerCase();
+    if (part && !regionSeen.has(low)) {
+      regionSeen.add(low);
+      regionParts.push(part);
+    }
+  });
+  const regionText = regionParts.join(', ');
+  const sublabel = [regionText, formatCoordSnippet(numLat, numLng)].filter(Boolean).join(' · ');
+
+  return {
+    name: cleanName,
+    admin1: cleanAdmin1,
+    admin2: cleanAdmin2,
+    country: cleanCountry,
+    countryCode: codeUpper || (isUS ? 'US' : ''),
+    label,
+    fullName,
+    sublabel,
+    lat: numLat,
+    lng: numLng,
+    population: Number(population) || 0,
+    source,
+    score: 0
+  };
+}
+
+/**
+ * Search Disambiguated Cities & Destinations for "Location (Live Temp)" Verification
+ */
+export async function searchWeatherLocations(rawQuery) {
+  const cleaned = String(rawQuery || '').trim();
+  if (cleaned.length < 2) return [];
 
   const parts = cleaned.split(',').map((p) => p.trim()).filter(Boolean);
   const primaryName = parts[0] || cleaned;
   const regionRaw = parts.slice(1).join(' ').replace(/\b\d{5}(?:-\d{4})?\b/g, '').trim();
   const regionUpper = regionRaw.toUpperCase();
   const regionExpanded = (US_STATE_NAMES[regionUpper] || regionRaw).toLowerCase();
+  const primaryLow = primaryName.toLowerCase();
 
-  // 1. Query Open-Meteo Geocoding with the clean city name + smart state/region scoring
   const geo = await fetchWeatherJson(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(primaryName)}&count=8&language=en&format=json`
+    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(primaryName)}&count=10&language=en&format=json`
   );
-  const results = Array.isArray(geo?.results) ? geo.results : [];
+  const rawResults = Array.isArray(geo?.results) ? geo.results : [];
 
-  if (results.length > 0) {
-    let best = results[0];
-    let bestScore = -999;
+  let candidates = rawResults
+    .map((p) => buildLocationCandidate({
+      name: p.name,
+      admin1: p.admin1 || '',
+      admin2: p.admin2 || '',
+      country: p.country || '',
+      countryCode: p.country_code || '',
+      lat: p.latitude,
+      lng: p.longitude,
+      population: p.population || 0,
+      source: 'open-meteo'
+    }))
+    .filter(Boolean);
 
-    results.forEach((place, idx) => {
-      let score = 20 - idx * 2;
-      const admin1 = String(place.admin1 || '').toLowerCase();
-      const country = String(place.country || '').toLowerCase();
-      const countryCode = String(place.country_code || '').toUpperCase();
-
-      if (regionExpanded) {
-        if (admin1 === regionExpanded || admin1.includes(regionExpanded)) score += 70;
-        else if (country === regionExpanded || country.includes(regionExpanded)) score += 45;
-        else score -= 25;
-      } else if (countryCode === 'US') {
-        score += 14;
-        if (admin1 === 'california') score += 8;
-      }
-
-      if (Number(place.population) > 50000) score += 6;
-      if (score > bestScore) {
-        bestScore = score;
-        best = place;
-      }
+  // Fallback to Photon geocoder for landmarks, ZIP codes, or small neighborhoods
+  if (candidates.length < 3) {
+    const photon = await fetchWeatherJson(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(cleaned)}&limit=6`
+    );
+    const features = Array.isArray(photon?.features) ? photon.features : [];
+    features.forEach((f) => {
+      const coords = f?.geometry?.coordinates;
+      const prop = f?.properties || {};
+      if (!Array.isArray(coords) || coords.length < 2) return;
+      const cand = buildLocationCandidate({
+        name: prop.name || prop.city || prop.town || prop.village || primaryName,
+        admin1: prop.state || '',
+        admin2: prop.county || '',
+        country: prop.country || '',
+        countryCode: prop.countrycode || '',
+        lat: coords[1],
+        lng: coords[0],
+        population: 0,
+        source: 'photon'
+      });
+      if (cand) candidates.push(cand);
     });
-
-    if (Number.isFinite(Number(best?.latitude)) && Number.isFinite(Number(best?.longitude))) {
-      return {
-        lat: Number(best.latitude),
-        lng: Number(best.longitude),
-        resolvedName: best.name || primaryName
-      };
-    }
   }
 
-  // 2. Fallback to Photon geocoder for landmarks, parks, or full street addresses
-  const photon = await fetchWeatherJson(
-    `https://photon.komoot.io/api/?q=${encodeURIComponent(cleaned)}&limit=3`
+  // Score candidates against user's query & optional state/region/country filter
+  candidates.forEach((cand) => {
+    let score = 0;
+    const nameLow = cand.name.toLowerCase();
+    const admin1Low = cand.admin1.toLowerCase();
+    const admin2Low = cand.admin2.toLowerCase();
+    const countryLow = cand.country.toLowerCase();
+    const countryCodeLow = cand.countryCode.toLowerCase();
+
+    if (nameLow === primaryLow) score += 45;
+    else if (nameLow.startsWith(primaryLow)) score += 28;
+    else if (nameLow.includes(primaryLow)) score += 14;
+
+    if (regionExpanded) {
+      if (admin1Low === regionExpanded) score += 90;
+      else if (admin1Low && admin1Low.includes(regionExpanded)) score += 65;
+      else if (countryLow === regionExpanded || countryCodeLow === regionExpanded) score += 75;
+      else if (countryLow && countryLow.includes(regionExpanded)) score += 50;
+      else if (admin2Low && admin2Low.includes(regionExpanded)) score += 40;
+      else score -= 45;
+    }
+
+    if (cand.source === 'open-meteo') score += 8;
+    if (cand.population > 0) {
+      score += Math.min(20, Math.log10(cand.population + 1) * 3.2);
+    }
+
+    cand.score = score;
+  });
+
+  // Sort best matches first & deduplicate co-located entries
+  candidates.sort((a, b) => b.score - a.score);
+
+  const unique = [];
+  for (const cand of candidates) {
+    if (regionExpanded && cand.score < 0 && unique.length > 0) continue;
+    const duplicate = unique.some((u) => {
+      const sameGeo = Math.abs(u.lat - cand.lat) < 0.05 && Math.abs(u.lng - cand.lng) < 0.05;
+      const sameFull = u.fullName.toLowerCase() === cand.fullName.toLowerCase();
+      return sameGeo || sameFull;
+    });
+    if (!duplicate) unique.push(cand);
+    if (unique.length >= 6) break;
+  }
+
+  // If two distinct results still share the same short label, append region to keep labels unambiguous
+  const labelCounts = new Map();
+  unique.forEach((u) => {
+    const k = u.label.toLowerCase();
+    labelCounts.set(k, (labelCounts.get(k) || 0) + 1);
+  });
+  unique.forEach((u) => {
+    if ((labelCounts.get(u.label.toLowerCase()) || 0) > 1 && u.admin1) {
+      const extra = u.countryCode === 'US' ? (u.admin2 || u.admin1) : u.admin1;
+      if (extra && !u.label.toLowerCase().includes(extra.toLowerCase())) {
+        u.label = `${u.name}, ${extra}${u.countryCode ? `, ${u.countryCode}` : ''}`;
+      }
+    }
+  });
+
+  return unique;
+}
+
+/**
+ * Verify a Typed Weather Location — Flags Ambiguous City Names Instead of Guessing
+ */
+export async function verifyWeatherLocation(rawQuery) {
+  const cleaned = String(rawQuery || '').trim();
+  if (cleaned.length < 2) {
+    return {
+      verified: false,
+      ambiguous: false,
+      matches: [],
+      best: null,
+      message: 'Enter a city or destination name first.'
+    };
+  }
+
+  const matches = await searchWeatherLocations(cleaned);
+  if (matches.length === 0) {
+    return {
+      verified: false,
+      ambiguous: false,
+      matches: [],
+      best: null,
+      message: 'Location not found — try including the state or country (e.g. "Springfield, IL" or "Paris, France").'
+    };
+  }
+
+  if (matches.length === 1) {
+    return {
+      verified: true,
+      ambiguous: false,
+      matches,
+      best: matches[0],
+      message: `Verified: ${matches[0].fullName}`
+    };
+  }
+
+  const normQuery = normalizeWeatherKey(cleaned);
+  const exactFullOrLabel = matches.find(
+    (m) => normalizeWeatherKey(m.fullName) === normQuery || normalizeWeatherKey(m.label) === normQuery
   );
-  const coords = photon?.features?.[0]?.geometry?.coordinates;
-  if (Array.isArray(coords) && coords.length >= 2) {
-    const lng = Number(coords[0]);
-    const lat = Number(coords[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return { lat, lng, resolvedName: primaryName };
-    }
+  if (exactFullOrLabel) {
+    return {
+      verified: true,
+      ambiguous: false,
+      matches,
+      best: exactFullOrLabel,
+      message: `Verified: ${exactFullOrLabel.fullName}`
+    };
   }
 
-  return null;
+  const hasRegionHint = cleaned.includes(',');
+  const top = matches[0];
+  const second = matches[1];
+  const clearWinner = hasRegionHint && (top.score - second.score >= 25);
+
+  if (clearWinner) {
+    return {
+      verified: true,
+      ambiguous: false,
+      matches,
+      best: top,
+      message: `Verified: ${top.fullName}`
+    };
+  }
+
+  return {
+    verified: false,
+    ambiguous: true,
+    matches,
+    best: null,
+    message: `Multiple locations match "${cleaned}". Select the exact one below so weather stays accurate.`
+  };
+}
+
+async function resolveWeatherCoords(locationName) {
+  const matches = await searchWeatherLocations(locationName);
+  if (matches.length === 0) return null;
+  return {
+    lat: matches[0].lat,
+    lng: matches[0].lng,
+    resolvedName: matches[0].name
+  };
 }
 
 export function getAnimatedWeatherSvg(code, sizeClass = 'w-8 h-8', isNight = false) {
@@ -1556,12 +1816,21 @@ export function buildFallback7DayForecast(baseTempStr = '72°F') {
   });
 }
 
-export async function fetchLiveWeatherForLocation(locationName, forceRefresh = false) {
-  const key = normalizeWeatherKey(locationName);
+export async function fetchLiveWeatherForLocation(locationName, coordsOrForce = null, forceRefresh = false) {
+  let verifiedCoords = null;
+  let force = Boolean(forceRefresh);
+
+  if (typeof coordsOrForce === 'boolean') {
+    force = coordsOrForce;
+  } else {
+    verifiedCoords = normalizeLocationCoords(coordsOrForce);
+  }
+
+  const key = buildWeatherCacheKey(locationName, verifiedCoords);
   if (!key) return null;
 
   const existing = weatherCache.get(key);
-  if (!forceRefresh && existing && Date.now() - existing.fetchedAt < WEATHER_CACHE_TTL_MS) {
+  if (!force && existing && Date.now() - existing.fetchedAt < WEATHER_CACHE_TTL_MS) {
     return existing;
   }
 
@@ -1571,7 +1840,7 @@ export async function fetchLiveWeatherForLocation(locationName, forceRefresh = f
 
   const requestPromise = (async () => {
     try {
-      const coords = await resolveWeatherCoords(locationName);
+      const coords = verifiedCoords || await resolveWeatherCoords(locationName);
       if (!coords) return existing || null;
 
       const wData = await fetchWeatherJson(
@@ -1674,7 +1943,10 @@ export function renderSevenDayWeather(day, weatherData) {
 
   if (!gridEl) return;
 
-  if (locTag) locTag.textContent = locName;
+  if (locTag) {
+    locTag.textContent = locName;
+    locTag.title = day?.locationFullName || locName;
+  }
   if (tempLarge) tempLarge.textContent = weatherData?.temp || day?.temp || '72°F';
   if (condEl) {
     condEl.textContent = weatherData
@@ -1818,10 +2090,10 @@ export async function syncLiveWeatherForActiveDay() {
 
   const reqId = ++weatherSyncRequestId;
   const targetDayId = day.id;
-  const targetLocKey = normalizeWeatherKey(day.location);
+  const targetLocKey = buildWeatherCacheKey(day.location, day.locationCoords);
 
   // Immediately render cached weather (or clean fallback) so refresh never sits blank
-  const cached = getCachedWeatherEntry(day.location);
+  const cached = getCachedWeatherEntry(day.location, day.locationCoords);
   if (cached) {
     day.temp = cached.temp;
     renderSevenDayWeather(day, cached);
@@ -1835,7 +2107,7 @@ export async function syncLiveWeatherForActiveDay() {
   const isFresh = cached && Date.now() - cached.fetchedAt < WEATHER_CACHE_TTL_MS;
   if (isFresh) return;
 
-  const live = await fetchLiveWeatherForLocation(day.location);
+  const live = await fetchLiveWeatherForLocation(day.location, day.locationCoords);
   if (!live) return;
 
   day.temp = live.temp;
@@ -1845,7 +2117,7 @@ export async function syncLiveWeatherForActiveDay() {
     reqId === weatherSyncRequestId &&
     currentDay &&
     currentDay.id === targetDayId &&
-    normalizeWeatherKey(currentDay.location) === targetLocKey
+    buildWeatherCacheKey(currentDay.location, currentDay.locationCoords) === targetLocKey
   ) {
     renderSevenDayWeather(currentDay, live);
   }
@@ -1865,7 +2137,7 @@ export async function prefetchAllDaysWeather() {
   let anyUpdated = false;
   await Promise.all(
     otherDays.map(async (d) => {
-      const live = await fetchLiveWeatherForLocation(d.location);
+      const live = await fetchLiveWeatherForLocation(d.location, d.locationCoords);
       if (live && d.temp !== live.temp) {
         d.temp = live.temp;
         anyUpdated = true;
@@ -1915,6 +2187,7 @@ export function renderForecastStrip() {
       <button
         type="button"
         data-strip-idx="${idx}"
+        title="${esc(day.locationFullName || day.location || '')}"
         class="group relative rounded-2xl p-3.5 text-left transition-all duration-300 backdrop-blur-2xl border cursor-pointer ${
           isActive
             ? 'bg-white/20 border-white/40 shadow-[0_12px_36px_rgba(0,0,0,0.35)] scale-[1.02]'

@@ -9,6 +9,7 @@ import {
   appStore,
   uid,
   esc,
+  normalizeLocationCoords,
   getAllCategories,
   getCategoryMeta,
   inferBudgetCategory,
@@ -25,6 +26,8 @@ import {
   prefetchCardPhotoForDay,
   prefetchAllCardPhotos,
   scheduleCloudSave,
+  searchWeatherLocations,
+  verifyWeatherLocation,
   syncLiveWeatherForActiveDay,
   prefetchAllDaysWeather,
   refreshTripTravelRoutes,
@@ -90,6 +93,223 @@ function getChangedEventIds(day, snapshot, extraIds = []) {
 }
 
 /**
+ * Reusable Verified Weather Location Picker (Used in Add/Edit Day & Create New Trip Modals)
+ * Guarantees exact coordinates so same-named cities never get confused.
+ */
+function formatCoordsBrief(coords) {
+  if (!coords) return '';
+  const ns = coords.lat >= 0 ? 'N' : 'S';
+  const ew = coords.lng >= 0 ? 'E' : 'W';
+  return `${Math.abs(coords.lat).toFixed(2)}°${ns}, ${Math.abs(coords.lng).toFixed(2)}°${ew}`;
+}
+
+function attachVerifiedLocationPicker({
+  inputId,
+  verifyBtnId,
+  suggestionsId,
+  statusId,
+  initialLocation = '',
+  initialFullName = '',
+  initialCoords = null
+}) {
+  const inputEl = document.getElementById(inputId);
+  const verifyBtn = document.getElementById(verifyBtnId);
+  const suggestionsBox = document.getElementById(suggestionsId);
+  const statusEl = document.getElementById(statusId);
+
+  const safeCoords = normalizeLocationCoords(initialCoords);
+  let verifiedSelection = (safeCoords && String(initialLocation || '').trim())
+    ? {
+        label: String(initialLocation).trim(),
+        fullName: String(initialFullName || initialLocation).trim(),
+        coords: safeCoords
+      }
+    : null;
+
+  let suggestTimer = null;
+  let suggestReqId = 0;
+
+  function setStatus(htmlText, tone = 'muted') {
+    if (!statusEl) return;
+    const toneClass = tone === 'ok'
+      ? 'text-emerald-300 font-medium'
+      : tone === 'warn'
+        ? 'text-amber-300 font-medium'
+        : tone === 'error'
+          ? 'text-rose-300 font-medium'
+          : 'text-white/50';
+    statusEl.className = `text-[11px] leading-snug ${toneClass}`;
+    statusEl.innerHTML = htmlText;
+  }
+
+  function syncBorderState() {
+    if (!inputEl) return;
+    inputEl.classList.toggle('border-emerald-400/50', Boolean(verifiedSelection));
+    inputEl.classList.toggle('border-sky-400/30', !verifiedSelection);
+  }
+
+  function applyVerifiedChoice(choice) {
+    verifiedSelection = {
+      label: choice.label,
+      fullName: choice.fullName || choice.label,
+      coords: { lat: Number(choice.lat), lng: Number(choice.lng) }
+    };
+    if (inputEl) inputEl.value = verifiedSelection.label;
+    if (suggestionsBox) {
+      suggestionsBox.classList.add('hidden');
+      suggestionsBox.innerHTML = '';
+    }
+    syncBorderState();
+    setStatus(
+      `✓ Verified: ${esc(verifiedSelection.fullName)} <span class="text-emerald-200/70">(${esc(formatCoordsBrief(verifiedSelection.coords))})</span>`,
+      'ok'
+    );
+  }
+
+  function renderSuggestions(list) {
+    if (!suggestionsBox) return;
+    if (!Array.isArray(list) || list.length === 0) {
+      suggestionsBox.classList.add('hidden');
+      suggestionsBox.innerHTML = '';
+      return;
+    }
+
+    suggestionsBox.innerHTML = list.map((item, idx) => `
+      <button
+        type="button"
+        data-wloc-sug="${idx}"
+        class="w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-sky-500/20 border border-transparent hover:border-sky-400/35 transition-all cursor-pointer"
+      >
+        <span class="text-sky-300 mt-0.5 shrink-0">${ICONS.pin}</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-xs font-semibold text-white truncate">${esc(item.label)}</div>
+          ${item.sublabel ? `<div class="text-[10px] text-white/55 truncate">${esc(item.sublabel)}</div>` : ''}
+        </div>
+        ${item.countryCode ? `<span class="px-1.5 py-0.5 rounded-md bg-white/10 border border-white/15 text-[9px] font-bold text-sky-200 shrink-0">${esc(item.countryCode)}</span>` : ''}
+      </button>
+    `).join('');
+
+    suggestionsBox.classList.remove('hidden');
+
+    suggestionsBox.querySelectorAll('[data-wloc-sug]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const picked = list[Number(btn.dataset.wlocSug)];
+        if (picked) applyVerifiedChoice(picked);
+      });
+    });
+  }
+
+  async function runVerify() {
+    const val = inputEl?.value.trim() || '';
+    if (!val) {
+      setStatus('Enter a city or destination name first.', 'warn');
+      inputEl?.focus();
+      return { ok: false, reason: 'empty' };
+    }
+
+    clearTimeout(suggestTimer);
+    suggestReqId++;
+
+    if (verifyBtn) {
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Checking…';
+    }
+    setStatus('Verifying exact location & coordinates…', 'muted');
+
+    const res = await verifyWeatherLocation(val);
+
+    if (verifyBtn) {
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Verify';
+    }
+
+    if (res.verified && res.best) {
+      applyVerifiedChoice(res.best);
+      return { ok: true, ...verifiedSelection };
+    }
+
+    if (res.ambiguous && res.matches.length > 0) {
+      verifiedSelection = null;
+      syncBorderState();
+      renderSuggestions(res.matches);
+      setStatus(`⚠ ${esc(res.message)}`, 'warn');
+      return { ok: false, reason: 'ambiguous' };
+    }
+
+    verifiedSelection = null;
+    syncBorderState();
+    renderSuggestions([]);
+    setStatus(`✕ ${esc(res.message)}`, 'error');
+    return { ok: false, reason: 'not_found' };
+  }
+
+  inputEl?.addEventListener('input', () => {
+    const val = inputEl.value.trim();
+    verifiedSelection = null;
+    syncBorderState();
+    clearTimeout(suggestTimer);
+
+    if (val.length < 2) {
+      renderSuggestions([]);
+      setStatus('Type a city or destination, then pick a match or click Verify.', 'muted');
+      return;
+    }
+
+    setStatus('Searching exact locations…', 'muted');
+    const reqId = ++suggestReqId;
+    suggestTimer = setTimeout(async () => {
+      const results = await searchWeatherLocations(val);
+      if (reqId !== suggestReqId) return;
+      if (results.length > 0) {
+        renderSuggestions(results);
+        setStatus('Select the exact location below or click Verify.', 'muted');
+      } else {
+        renderSuggestions([]);
+        setStatus('No instant matches yet — include state or country, then click Verify.', 'warn');
+      }
+    }, 320);
+  });
+
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runVerify();
+    }
+  });
+
+  verifyBtn?.addEventListener('click', () => {
+    runVerify();
+  });
+
+  // Render initial verification status cleanly
+  syncBorderState();
+  if (verifiedSelection) {
+    setStatus(
+      `✓ Verified: ${esc(verifiedSelection.fullName)} <span class="text-emerald-200/70">(${esc(formatCoordsBrief(verifiedSelection.coords))})</span>`,
+      'ok'
+    );
+  } else if (String(initialLocation || '').trim()) {
+    setStatus('Click Verify or pick a suggestion to lock exact coordinates for live weather.', 'warn');
+  }
+
+  return {
+    getSelection: () => verifiedSelection,
+    async ensureVerified() {
+      const val = inputEl?.value.trim() || '';
+      if (!val) {
+        setStatus('Please enter and verify a location.', 'error');
+        inputEl?.focus();
+        return { ok: false, reason: 'empty' };
+      }
+      if (verifiedSelection && verifiedSelection.label.toLowerCase() === val.toLowerCase()) {
+        return { ok: true, ...verifiedSelection };
+      }
+      return await runVerify();
+    }
+  };
+}
+
+/**
  * Edit Current Trip Overview OR Create a Brand-New Trip
  */
 export function openHeroModal(mode = 'edit') {
@@ -104,7 +324,9 @@ export function openHeroModal(mode = 'edit') {
         tripLength: '3 days / 2 nights',
         firstDeparture: 'Friday · 9:00 AM',
         hotelPlan: '2 nights',
-        startLocation: 'San Diego'
+        startLocation: 'San Diego, CA',
+        startLocationFullName: 'San Diego, California, United States',
+        startLocationCoords: { lat: 32.7157, lng: -117.1611 }
       }
     : {
         title: state.meta.title,
@@ -114,6 +336,9 @@ export function openHeroModal(mode = 'edit') {
         hotelPlan: state.meta.hotelPlan,
         startLocation: state.days[0]?.location || ''
       };
+
+  let heroLocationPicker = null;
+  let isSavingHero = false;
 
   openModal({
     title: isCreate ? 'Edit Trip Overview · New Trip' : 'Edit Trip Overview',
@@ -142,9 +367,24 @@ export function openHeroModal(mode = 'edit') {
             <textarea id="hSub" rows="2" placeholder="Describe the highlights of your trip..." class="${inp}">${esc(defaults.subtitle)}</textarea>
           </div>
           ${isCreate ? `
-            <div>
-              <label class="block text-xs font-semibold text-sky-300/90 mb-1">Starting Destination (Day 1 Live Weather &amp; Backdrop)</label>
-              <input id="hLoc" placeholder="e.g. San Diego, Big Bear, Santa Barbara, Tokyo" class="${inp} border-sky-400/30" value="${esc(defaults.startLocation)}" />
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-sky-300/90">Starting Destination <span class="text-white/40 font-normal">(Verify for Day 1 Live Weather &amp; Backdrop)</span></label>
+              <div class="flex items-center gap-1.5">
+                <input
+                  id="hLoc"
+                  autocomplete="off"
+                  placeholder="e.g. San Diego, CA · Big Bear, CA · Paris, France"
+                  class="${inp} border-sky-400/30 flex-1 min-w-0"
+                  value="${esc(defaults.startLocation)}"
+                />
+                <button
+                  id="hVerifyLocBtn"
+                  type="button"
+                  class="px-3 py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400/40 text-xs font-semibold text-sky-100 transition-all cursor-pointer shrink-0"
+                >Verify</button>
+              </div>
+              <div id="hLocSuggestions" class="hidden rounded-2xl border border-sky-400/30 bg-[#141720]/98 backdrop-blur-2xl p-1.5 space-y-1 shadow-2xl shadow-black/70 max-h-52 overflow-y-auto animate-slideDown"></div>
+              <div id="hLocVerifyStatus" class="text-[11px] leading-snug text-white/50"></div>
             </div>
           ` : ''}
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -160,7 +400,8 @@ export function openHeroModal(mode = 'edit') {
       {
         label: isCreate ? 'Create New Trip' : 'Save Changes',
         variant: 'primary',
-        onClick: () => {
+        onClick: async () => {
+          if (isSavingHero) return;
           const title = document.getElementById('hTitle').value.trim();
           if (!title) return showToast('Please enter a trip title', 'error');
           const subtitle = document.getElementById('hSub').value.trim();
@@ -169,19 +410,31 @@ export function openHeroModal(mode = 'edit') {
           const hotelPlan = document.getElementById('hHotel').value.trim() || defaults.hotelPlan;
 
           if (isCreate) {
-            const startLocation = document.getElementById('hLoc')?.value.trim() || 'San Diego';
+            isSavingHero = true;
+            const locRes = await heroLocationPicker.ensureVerified();
+            isSavingHero = false;
+
+            if (!locRes.ok) {
+              if (locRes.reason === 'ambiguous') {
+                return showToast('Multiple locations match — please pick the exact one from the list', 'error');
+              }
+              return showToast('Please verify the starting destination first', 'error');
+            }
+
             const newTrip = createNewDefaultTrip({
               title,
               subtitle,
               tripLength,
               firstDeparture,
               hotelPlan,
-              startLocation
+              startLocation: locRes.label,
+              startLocationFullName: locRes.fullName,
+              startLocationCoords: locRes.coords
             });
             appStore.trips.push(newTrip);
             closeModal();
             switchToTrip(newTrip.id, true);
-            showToast(`Created "${title}"!`);
+            showToast(`Created "${title}" (${locRes.label})!`);
           } else {
             appStore.state.meta.title = title;
             appStore.state.meta.subtitle = subtitle;
@@ -198,6 +451,18 @@ export function openHeroModal(mode = 'edit') {
       }
     ]
   });
+
+  if (isCreate) {
+    heroLocationPicker = attachVerifiedLocationPicker({
+      inputId: 'hLoc',
+      verifyBtnId: 'hVerifyLocBtn',
+      suggestionsId: 'hLocSuggestions',
+      statusId: 'hLocVerifyStatus',
+      initialLocation: defaults.startLocation,
+      initialFullName: defaults.startLocationFullName,
+      initialCoords: defaults.startLocationCoords
+    });
+  }
 
   setTimeout(() => {
     const titleEl = document.getElementById('hTitle');
@@ -727,12 +992,12 @@ export function openBudgetModal(itemId = null) {
 }
 
 /**
- * Add or Edit Trip Day Modal (with Scene Presets & Custom Photo Links)
+ * Add or Edit Trip Day Modal (with Verified Location Picker, Scene Presets & Custom Photo Links)
  */
 export function openDayModal(dayId = null) {
   const state = appStore.state;
   const existing = dayId ? state.days.find((d) => d.id === dayId) : null;
-  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40';
+  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
   const currentScene = existing?.scene || 'desert';
   const sceneOptions = [
     { k: 'ps_tramway', l: 'Palm Springs Aerial Tramway' },
@@ -751,6 +1016,9 @@ export function openDayModal(dayId = null) {
     { k: 'custom', l: 'Custom Photo Links (Paste URL)' }
   ].map((o) => `<option value="${o.k}" class="bg-slate-900" ${currentScene === o.k ? 'selected' : ''}>${o.l}</option>`).join('');
 
+  let dayLocationPicker = null;
+  let isSavingDay = false;
+
   openModal({
     title: existing ? 'Edit Day Details' : 'Add New Day',
     bodyHtml: `
@@ -759,9 +1027,33 @@ export function openDayModal(dayId = null) {
           <div><label class="block text-xs font-semibold text-white/60 mb-1">Day Code</label><input id="dShort" placeholder="TUE" class="${inp}" value="${esc(existing ? existing.shortDay : `DAY ${state.days.length + 1}`)}" /></div>
           <div><label class="block text-xs font-semibold text-white/60 mb-1">Date</label><input id="dDate" placeholder="Dec 1" class="${inp}" value="${esc(existing ? existing.shortDate : '')}" /></div>
         </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <div><label class="block text-xs font-semibold text-white/60 mb-1">Location (Live Temp)</label><input id="dLoc" placeholder="e.g. Palm Springs, Big Bear" class="${inp}" value="${esc(existing ? existing.location : '')}" /></div>
-          <div><label class="block text-xs font-semibold text-white/60 mb-1">Landscape &amp; 3D Scene</label><select id="dScene" class="${inp}">${sceneOptions}</select></div>
+
+        <!-- Verified Location (Live Temp) Picker -->
+        <div class="relative space-y-1.5">
+          <label class="block text-xs font-semibold text-sky-300/90">Location (Live Temp) <span class="text-white/40 font-normal">(Pick match or Verify exact city)</span></label>
+          <div class="flex items-center gap-1.5">
+            <input
+              id="dLoc"
+              autocomplete="off"
+              placeholder="Search city &amp; state/country (e.g. Palm Springs, CA · Paris, France)"
+              class="${inp} border-sky-400/30 flex-1 min-w-0"
+              value="${esc(existing ? existing.location : '')}"
+            />
+            <button
+              id="dVerifyLocBtn"
+              type="button"
+              class="px-3 py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/35 border border-sky-400/40 text-xs font-semibold text-sky-100 transition-all cursor-pointer shrink-0"
+            >Verify</button>
+          </div>
+          <div id="dLocSuggestions" class="hidden rounded-2xl border border-sky-400/30 bg-[#141720]/98 backdrop-blur-2xl p-1.5 space-y-1 shadow-2xl shadow-black/70 max-h-52 overflow-y-auto animate-slideDown"></div>
+          <div id="dLocVerifyStatus" class="text-[11px] leading-snug text-white/50">
+            Type a city or destination, then pick a match or click Verify so weather never confuses locations.
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-white/60 mb-1">Landscape &amp; 3D Scene</label>
+          <select id="dScene" class="${inp}">${sceneOptions}</select>
         </div>
 
         <div id="customPhotoBox" class="${currentScene === 'custom' ? '' : 'hidden'} rounded-2xl border border-sky-400/30 bg-sky-500/10 p-3.5 space-y-3 animate-popIn">
@@ -801,7 +1093,8 @@ export function openDayModal(dayId = null) {
       {
         label: existing ? 'Save Day' : 'Create Day',
         variant: 'primary',
-        onClick: () => {
+        onClick: async () => {
+          if (isSavingDay) return;
           const title = document.getElementById('dTitle').value.trim();
           if (!title) return showToast('Please enter a day title', 'error');
           const selectedScene = document.getElementById('dScene').value;
@@ -812,13 +1105,32 @@ export function openDayModal(dayId = null) {
             return showToast('Please paste at least one custom photo link', 'error');
           }
 
-          const locVal = document.getElementById('dLoc').value.trim() || 'California';
+          isSavingDay = true;
+          const locRes = await dayLocationPicker.ensureVerified();
+          isSavingDay = false;
+
+          if (!locRes.ok) {
+            if (locRes.reason === 'ambiguous') {
+              return showToast('Multiple locations match — please pick the exact one from the list', 'error');
+            }
+            return showToast('Please verify the location before saving', 'error');
+          }
+
+          const prevCoords = normalizeLocationCoords(existing?.locationCoords);
+          const locationChanged = !existing ||
+            !prevCoords ||
+            Math.abs(prevCoords.lat - locRes.coords.lat) > 0.001 ||
+            Math.abs(prevCoords.lng - locRes.coords.lng) > 0.001;
+
           const payload = {
             shortDay: document.getElementById('dShort').value.trim() || `DAY ${state.days.length + 1}`,
             shortDate: document.getElementById('dDate').value.trim(),
-            location: locVal,
-            landmark: locVal,
-            cardLandmark: `${locVal} sightseeing`,
+            location: locRes.label,
+            locationFullName: locRes.fullName,
+            locationCoords: { lat: locRes.coords.lat, lng: locRes.coords.lng },
+            locationVerified: true,
+            landmark: existing && !locationChanged ? (existing.landmark || locRes.fullName) : locRes.fullName,
+            cardLandmark: existing && !locationChanged ? (existing.cardLandmark || `${locRes.fullName} sightseeing`) : `${locRes.fullName} sightseeing`,
             resolvedCardPhoto: null,
             scene: selectedScene,
             useScenePreset: selectedScene !== 'custom',
@@ -830,13 +1142,15 @@ export function openDayModal(dayId = null) {
             noteTitle: document.getElementById('dNoteTitle').value.trim() || 'Tip',
             noteBody: document.getElementById('dNoteBody').value.trim()
           };
+
           if (existing) {
+            if (locationChanged) payload.temp = '--°F';
             Object.assign(existing, payload);
-            showToast('Day updated & syncing live temperature...');
+            showToast(`Day updated (${locRes.label}) · syncing live weather...`);
           } else {
             state.days.push({ id: uid('day'), temp: '--°F', ...payload, events: [] });
             appStore.activeCarouselIndex = state.days.length - 1;
-            showToast('New day added & syncing live temperature...');
+            showToast(`New day added (${locRes.label}) · syncing live weather...`);
           }
           closeModal();
           updateBackdropForDay(state.days[appStore.activeCarouselIndex]);
@@ -850,6 +1164,16 @@ export function openDayModal(dayId = null) {
         }
       }
     ]
+  });
+
+  dayLocationPicker = attachVerifiedLocationPicker({
+    inputId: 'dLoc',
+    verifyBtnId: 'dVerifyLocBtn',
+    suggestionsId: 'dLocSuggestions',
+    statusId: 'dLocVerifyStatus',
+    initialLocation: existing ? existing.location : '',
+    initialFullName: existing ? (existing.locationFullName || existing.location) : '',
+    initialCoords: existing ? existing.locationCoords : null
   });
 
   const sceneSelect = document.getElementById('dScene');
@@ -1853,9 +2177,15 @@ export function confirmResetPlanner() {
     detail: 'This will restore the default itinerary, checklist, budget, and clear notes for the active trip (your other saved trips remain safe).',
     confirmLabel: 'Yes, Reset Trip',
     onConfirm: () => {
+      const firstDay = state.days[0];
       const fresh = isOriginal
         ? createInitialState()
-        : createNewDefaultTrip({ title: state.meta.title, startLocation: state.days[0]?.location || 'San Diego' });
+        : createNewDefaultTrip({
+            title: state.meta.title,
+            startLocation: firstDay?.location || 'San Diego, CA',
+            startLocationFullName: firstDay?.locationFullName || firstDay?.location || 'San Diego, California, United States',
+            startLocationCoords: firstDay?.locationCoords || { lat: 32.7157, lng: -117.1611 }
+          });
       fresh.id = state.id;
       const idx = appStore.trips.findIndex((t) => t.id === appStore.activeTripId);
       if (idx >= 0) appStore.trips[idx] = fresh;

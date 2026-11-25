@@ -4,7 +4,7 @@ import {
   renderStaticIcons,
   updateClock,
   setWeatherPanelExpanded,
-  toggleWeatherDayNightPreview,
+  refreshWeatherDayNightAuto,
   syncLiveWeatherForActiveDay,
   setActiveCarouselIndex,
   renderCarousel,
@@ -151,10 +151,6 @@ function bindGlobalEvents() {
     setWeatherPanelExpanded(!appStore.weatherPanelExpanded);
   });
 
-  document.getElementById('toggleDayNightBtn')?.addEventListener('click', () => {
-    toggleWeatherDayNightPreview();
-  });
-
   document.getElementById('notesInput')?.addEventListener('input', (e) => {
     appStore.state.notes = e.target.value;
     document.getElementById('notesMeta').textContent = `${appStore.state.notes.length} characters`;
@@ -235,6 +231,13 @@ function bindGlobalEvents() {
   };
   window.addEventListener('resize', handleViewportChange);
   window.addEventListener('orientationchange', handleViewportChange);
+
+  // Re-check automatic Day/Night transition when returning to the tab
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      refreshWeatherDayNightAuto();
+    }
+  });
 }
 
 /**
@@ -248,6 +251,7 @@ bindGlobalEvents();
 updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0]);
 renderAll();
 prefetchAllDaysWeather();
+setInterval(refreshWeatherDayNightAuto, 60 * 1000);
 setInterval(syncLiveWeatherForActiveDay, 20 * 60 * 1000);
 prefetchAllCardPhotos();
 refreshTripTravelRoutes();

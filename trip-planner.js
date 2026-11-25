@@ -777,7 +777,6 @@ export const appStore = {
   activeCarouselIndex: 0,
   showAllDays: false,
   weatherPanelExpanded: true,
-  weatherSkyOverride: null, // null = live destination day/night, 'day' or 'night' = preview override
   expandedBudgetIds: new Set(),
   currentBackdropUrl: '',
   justShiftedEventIds: new Set(),
@@ -856,7 +855,6 @@ export function switchToTrip(tripId, silent = false) {
   syncActiveTripRef();
   appStore.activeCarouselIndex = 0;
   appStore.showAllDays = false;
-  appStore.weatherSkyOverride = null;
 
   const track = document.getElementById('carouselTrack');
   if (track) track.dataset.dayIds = '';
@@ -1238,10 +1236,10 @@ export function updateClock() {
 
 /**
  * ============================================================================
- * LIVE ANIMATED 7-DAY WEATHER & DAY/NIGHT SKY ENGINE
+ * LIVE ANIMATED 7-DAY WEATHER & AUTOMATIC SUNRISE/SUNSET DAY/NIGHT SKY ENGINE
  * ============================================================================
  */
-const WEATHER_STORAGE_KEY = 'tripos_weather_cache_v2';
+const WEATHER_STORAGE_KEY = 'tripos_weather_cache_v3';
 const WEATHER_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes fresh cache
 
 const US_STATE_NAMES = {
@@ -1261,7 +1259,7 @@ const US_STATE_NAMES = {
 const weatherCache = new Map();
 const pendingWeatherRequests = new Map();
 let weatherSyncRequestId = 0;
-let lastRenderedWeatherContext = { day: null, weatherData: null };
+let lastRenderedWeatherContext = { day: null, weatherData: null, renderedIsNight: null };
 
 function normalizeWeatherKey(locationName) {
   return String(locationName || '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -1307,6 +1305,13 @@ function isLocalDaytimeNow() {
   return hour >= 6 && hour < 19;
 }
 
+function parseIsoTimeToMinutes(isoStr) {
+  if (!isoStr || typeof isoStr !== 'string') return null;
+  const match = isoStr.match(/T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 function formatIsoClock12h(isoStr) {
   if (!isoStr || typeof isoStr !== 'string') return '';
   const match = isoStr.match(/T(\d{2}):(\d{2})/);
@@ -1316,6 +1321,28 @@ function formatIsoClock12h(isoStr) {
   const period = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
   return `${h}:${m} ${period}`;
+}
+
+function getDestinationNowMinutes(utcOffsetSeconds) {
+  if (!Number.isFinite(Number(utcOffsetSeconds))) return null;
+  const destDate = new Date(Date.now() + Number(utcOffsetSeconds) * 1000);
+  return destDate.getUTCHours() * 60 + destDate.getUTCMinutes();
+}
+
+function computeIsDaytime(weatherData) {
+  if (
+    weatherData &&
+    Number.isFinite(weatherData.sunriseMinutes) &&
+    Number.isFinite(weatherData.sunsetMinutes) &&
+    Number.isFinite(weatherData.utcOffsetSeconds)
+  ) {
+    const nowMins = getDestinationNowMinutes(weatherData.utcOffsetSeconds);
+    if (nowMins !== null) {
+      return nowMins >= weatherData.sunriseMinutes && nowMins < weatherData.sunsetMinutes;
+    }
+  }
+  if (typeof weatherData?.isDay === 'boolean') return weatherData.isDay;
+  return isLocalDaytimeNow();
 }
 
 async function fetchWeatherJson(url, timeoutMs = 6500) {
@@ -1556,13 +1583,21 @@ export async function fetchLiveWeatherForLocation(locationName, forceRefresh = f
       const code = Number.isFinite(Number(wData?.current?.weather_code)) ? Number(wData.current.weather_code) : 0;
       if (!Number.isFinite(tempVal)) return existing || null;
 
+      const utcOffsetSeconds = Number.isFinite(Number(wData?.utc_offset_seconds))
+        ? Number(wData.utc_offset_seconds)
+        : null;
+      const sunriseIso = wData?.daily?.sunrise?.[0] || '';
+      const sunsetIso = wData?.daily?.sunset?.[0] || '';
+      const sunrise = formatIsoClock12h(sunriseIso);
+      const sunset = formatIsoClock12h(sunsetIso);
+      const sunriseMinutes = parseIsoTimeToMinutes(sunriseIso);
+      const sunsetMinutes = parseIsoTimeToMinutes(sunsetIso);
+
       const isDay = wData?.current?.is_day !== undefined
         ? Number(wData.current.is_day) === 1
         : isLocalDaytimeNow();
       const humidity = Math.round(wData?.current?.relative_humidity_2m ?? 0);
       const wind = Math.round(wData?.current?.wind_speed_10m ?? 0);
-      const sunrise = formatIsoClock12h(wData?.daily?.sunrise?.[0]);
-      const sunset = formatIsoClock12h(wData?.daily?.sunset?.[0]);
 
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -1585,15 +1620,15 @@ export async function fetchLiveWeatherForLocation(locationName, forceRefresh = f
         };
       });
 
-      const meta = weatherCodeToMeta(code, !isDay);
       const result = {
         temp: `${tempVal}°F`,
         code,
         isDay,
+        utcOffsetSeconds,
         sunrise,
         sunset,
-        desc: meta.desc,
-        tone: meta.tone,
+        sunriseMinutes,
+        sunsetMinutes,
         humidity,
         wind,
         daily: daily.length === 7 ? daily : buildFallback7DayForecast(`${tempVal}°F`),
@@ -1615,18 +1650,11 @@ export async function fetchLiveWeatherForLocation(locationName, forceRefresh = f
 }
 
 export function renderSevenDayWeather(day, weatherData) {
-  lastRenderedWeatherContext = { day, weatherData };
-
   const locName = day?.location || 'California';
   const activeCode = weatherData?.code ?? 0;
-  const liveIsDay = typeof weatherData?.isDay === 'boolean' ? weatherData.isDay : isLocalDaytimeNow();
-  const effectiveIsDay = appStore.weatherSkyOverride === 'day'
-    ? true
-    : appStore.weatherSkyOverride === 'night'
-      ? false
-      : liveIsDay;
-  const isNight = !effectiveIsDay;
-  const isPreview = appStore.weatherSkyOverride !== null;
+  const isNight = !computeIsDaytime(weatherData);
+
+  lastRenderedWeatherContext = { day, weatherData, renderedIsNight: isNight };
 
   const meta = weatherCodeToMeta(activeCode, isNight);
   const daily = weatherData?.daily?.length ? weatherData.daily : buildFallback7DayForecast(day?.temp || '72°F');
@@ -1635,7 +1663,7 @@ export function renderSevenDayWeather(day, weatherData) {
   const tempLarge = document.getElementById('weatherCurrentTempLarge');
   const condEl = document.getElementById('weatherCurrentCondition');
   const currentIconEl = document.getElementById('weatherCurrentIcon');
-  const dayNightBtn = document.getElementById('toggleDayNightBtn');
+  const dayNightBadge = document.getElementById('weatherDayNightBadge');
   const dayNightDot = document.getElementById('weatherDayNightDot');
   const dayNightLabel = document.getElementById('weatherDayNightLabel');
   const telemetryEl = document.getElementById('weatherTelemetryPills');
@@ -1658,16 +1686,14 @@ export function renderSevenDayWeather(day, weatherData) {
     currentIconEl.innerHTML = getAnimatedWeatherSvg(activeCode, 'w-8 h-8', isNight);
   }
 
-  if (dayNightBtn && dayNightDot && dayNightLabel) {
-    dayNightBtn.className = isNight
-      ? 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-400/20 hover:bg-indigo-400/35 border border-indigo-300/40 text-indigo-100 transition-all cursor-pointer'
-      : 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400/20 hover:bg-amber-400/35 border border-amber-300/40 text-amber-100 transition-all cursor-pointer';
+  if (dayNightBadge && dayNightDot && dayNightLabel) {
+    dayNightBadge.className = isNight
+      ? 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-400/20 border border-indigo-300/40 text-indigo-100 select-none transition-colors duration-500'
+      : 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-400/20 border border-amber-300/40 text-amber-100 select-none transition-colors duration-500';
     dayNightDot.className = isNight
       ? 'w-1.5 h-1.5 rounded-full bg-indigo-300 shadow-[0_0_8px_rgba(165,180,252,0.9)]'
       : 'w-1.5 h-1.5 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.9)]';
-    dayNightLabel.textContent = isNight
-      ? (isPreview ? 'Night · Preview' : 'Night')
-      : (isPreview ? 'Day · Preview' : 'Day');
+    dayNightLabel.textContent = isNight ? 'Night' : 'Day';
   }
 
   if (weatherScene) {
@@ -1764,22 +1790,13 @@ export function renderSevenDayWeather(day, weatherData) {
   }).join('');
 }
 
-export function toggleWeatherDayNightPreview() {
-  const { day, weatherData } = lastRenderedWeatherContext;
-  const activeDay = day || appStore.state.days[appStore.activeCarouselIndex];
-  if (!activeDay) return;
-
-  const liveIsDay = typeof weatherData?.isDay === 'boolean' ? weatherData.isDay : isLocalDaytimeNow();
-
-  if (appStore.weatherSkyOverride === null) {
-    appStore.weatherSkyOverride = liveIsDay ? 'night' : 'day';
-    showToast(`Previewing ${appStore.weatherSkyOverride === 'night' ? 'Night' : 'Day'} sky animation`);
-  } else {
-    appStore.weatherSkyOverride = null;
-    showToast(`Live ${liveIsDay ? 'Day' : 'Night'} sky active`);
+export function refreshWeatherDayNightAuto() {
+  const { day, weatherData, renderedIsNight } = lastRenderedWeatherContext;
+  if (!day) return;
+  const nextIsNight = !computeIsDaytime(weatherData);
+  if (renderedIsNight !== null && nextIsNight !== renderedIsNight) {
+    renderSevenDayWeather(day, weatherData);
   }
-
-  renderSevenDayWeather(activeDay, weatherData);
 }
 
 export function setWeatherPanelExpanded(expanded) {
@@ -1939,7 +1956,6 @@ export function renderForecastStrip() {
 export function setActiveCarouselIndex(nextIdx) {
   if (appStore.state.days.length === 0) return;
   appStore.activeCarouselIndex = (nextIdx + appStore.state.days.length) % appStore.state.days.length;
-  appStore.weatherSkyOverride = null;
   updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex]);
   renderHero();
   renderForecastStrip();

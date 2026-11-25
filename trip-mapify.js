@@ -105,6 +105,7 @@ const mapState = {
   isCollapsed: false,
   isExpandedHeight: false,
   markersByEventId: new Map(),
+  tourSequence: [],
   currentBoundsPoints: [],
   lastFitSignature: '',
   tourTimer: null,
@@ -190,6 +191,39 @@ function fitMapToBounds(points, force = false) {
 }
 
 /**
+ * Group Co-Located Stops (e.g., Hotel Check-In at Stop 2 & Return to Hotel at Stop 6)
+ */
+function areCoordsCoLocated(a, b) {
+  if (!a || !b) return false;
+  return Math.abs(a.lat - b.lat) < 0.00025 && Math.abs(a.lng - b.lng) < 0.00025;
+}
+
+function groupCoLocatedStops(stops) {
+  const groups = [];
+  stops.forEach((stop) => {
+    const existingGroup = groups.find((g) => areCoordsCoLocated(g.coords, stop.coords));
+    if (existingGroup) {
+      existingGroup.stops.push(stop);
+    } else {
+      groups.push({
+        coords: stop.coords,
+        stops: [stop]
+      });
+    }
+  });
+  return groups;
+}
+
+function formatGroupPinLabel(groupStops, showAllDays) {
+  const tokens = groupStops.map((s) =>
+    showAllDays ? `D${s.dayIndex + 1}·${s.stopIndex + 1}` : `${s.stopIndex + 1}`
+  );
+  if (tokens.length === 1) return tokens[0];
+  if (tokens.length === 2) return `${tokens[0]} & ${tokens[1]}`;
+  return `${tokens.slice(0, -1).join(', ')} & ${tokens[tokens.length - 1]}`;
+}
+
+/**
  * Initialize Leaflet Instance Once Inside #mapifyCanvas
  */
 function ensureLeafletInitialized() {
@@ -214,7 +248,7 @@ function ensureLeafletInitialized() {
     center: [33.95, -117.2],
     zoom: 9,
     zoomControl: false,
-    scrollWheelZoom: false, // Prevents trapping page scrolling on desktop & trackpads
+    scrollWheelZoom: false,
     attributionControl: true
   });
 
@@ -230,7 +264,6 @@ function ensureLeafletInitialized() {
 
   setMapTileTheme(mapState.theme);
 
-  // Automatically re-measure container size whenever CSS/layout finishes settling
   if (typeof ResizeObserver !== 'undefined' && stageWrap && !mapState.resizeObserver) {
     mapState.resizeObserver = new ResizeObserver(() => {
       invalidateMapifySize(false);
@@ -238,7 +271,6 @@ function ensureLeafletInitialized() {
     mapState.resizeObserver.observe(stageWrap);
   }
 
-  // Post-mount passes ensure full-height tile rendering & bounds fit after initial page animation
   setTimeout(() => invalidateMapifySize(true), 180);
   setTimeout(() => invalidateMapifySize(true), 750);
 
@@ -283,14 +315,12 @@ function ensureMapifyShell() {
 
         <!-- Mapify Interactive Toolbar -->
         <div class="flex flex-wrap items-center gap-1.5">
-          <!-- Map Style Switcher -->
           <div class="inline-flex items-center p-0.5 rounded-full bg-black/40 border border-white/12">
             <button type="button" data-mapify-theme="dark" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/22 text-white shadow cursor-pointer">Dark</button>
             <button type="button" data-mapify-theme="street" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Street</button>
             <button type="button" data-mapify-theme="satellite" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Satellite</button>
           </div>
 
-          <!-- Animated Route Tour Playback -->
           <button
             id="mapifyTourBtn"
             type="button"
@@ -301,7 +331,6 @@ function ensureMapifyShell() {
             <span id="mapifyTourLabel">Play Tour</span>
           </button>
 
-          <!-- Fit Route Bounds -->
           <button
             id="mapifyFitBtn"
             type="button"
@@ -309,7 +338,6 @@ function ensureMapifyShell() {
             class="px-2.5 py-1.5 rounded-full text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 transition-all cursor-pointer"
           >Fit</button>
 
-          <!-- Expand / Compact Map Height -->
           <button
             id="mapifyExpandBtn"
             type="button"
@@ -317,7 +345,6 @@ function ensureMapifyShell() {
             class="hidden sm:inline-flex px-2.5 py-1.5 rounded-full text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 transition-all cursor-pointer"
           >Expand</button>
 
-          <!-- Collapse / Show Map Viewport -->
           <button
             id="mapifyCollapseBtn"
             type="button"
@@ -329,7 +356,7 @@ function ensureMapifyShell() {
         </div>
       </div>
 
-      <!-- 2. Interactive Map Viewport Stage (Explicit height prevents half-black render before Tailwind JIT) -->
+      <!-- 2. Interactive Map Viewport Stage -->
       <div id="mapifyStageWrap" style="height: 360px;" class="relative w-full bg-[#0b0e15] transition-all duration-300">
         <div id="mapifyCanvas" style="width: 100%; height: 100%;" class="z-0"></div>
 
@@ -340,7 +367,7 @@ function ensureMapifyShell() {
           <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Fixed</span>
         </div>
 
-        <!-- Empty State Overlay (Shown when 0 addresses are pinned yet) -->
+        <!-- Empty State Overlay -->
         <div id="mapifyEmptyOverlay" class="hidden pointer-events-none absolute inset-0 z-[400] flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs">
           <div class="rounded-2xl bg-[#161923]/90 border border-white/15 px-5 py-4 max-w-sm text-center shadow-2xl">
             <div class="text-xs font-bold uppercase tracking-widest text-sky-300">No Pinned Locations Yet</div>
@@ -349,23 +376,21 @@ function ensureMapifyShell() {
         </div>
       </div>
 
-      <!-- 3. Bottom 4-Graphic Spatial Command HUD (Replaces Plain Travel Badges) -->
+      <!-- 3. Bottom 4-Graphic Spatial Command HUD -->
       <div class="p-3.5 sm:p-4 bg-gradient-to-b from-[#131620]/95 to-[#0e1118]/98 border-t border-white/12">
         <div id="mapifyHudGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3"></div>
       </div>
     </div>
   `;
 
-  // Bind Toolbar Listeners Once
   bar.querySelectorAll('[data-mapify-theme]').forEach((btn) => {
     btn.addEventListener('click', () => setMapTileTheme(btn.dataset.mapifyTheme));
   });
 
   document.getElementById('mapifyFitBtn')?.addEventListener('click', () => {
-    const allPoints = Array.from(mapState.markersByEventId.values()).map((m) => [m.getLatLng().lat, m.getLatLng().lng]);
-    if (allPoints.length > 0) {
+    if (mapState.currentBoundsPoints.length > 0) {
       invalidateMapifySize(false);
-      fitMapToBounds(allPoints, true);
+      fitMapToBounds(mapState.currentBoundsPoints, true);
       showToast('Centered Mapify on route');
     } else {
       showToast('Add a stop location first to fit route', 'error');
@@ -410,7 +435,7 @@ function ensureMapifyShell() {
 }
 
 /**
- * Animated Traveler Beacon Tour Along Real Road Coordinates
+ * Animated Traveler Beacon Tour Along Chronological Stops (Visits Repeat Stops Twice in Order)
  */
 function startAnimatedRouteTour() {
   if (!mapState.map || !window.L) return;
@@ -418,9 +443,9 @@ function startAnimatedRouteTour() {
     document.getElementById('mapifyCollapseBtn')?.click();
   }
 
-  const orderedEntries = Array.from(mapState.markersByEventId.entries());
-  if (orderedEntries.length < 2) {
-    showToast('Need at least 2 pinned locations to play route tour', 'error');
+  const sequence = mapState.tourSequence || [];
+  if (sequence.length < 2) {
+    showToast('Need at least 2 pinned stops to play route tour', 'error');
     return;
   }
 
@@ -437,15 +462,14 @@ function startAnimatedRouteTour() {
 
   const advanceStop = () => {
     if (!mapState.isTourPlaying) return;
-    if (stepIdx >= orderedEntries.length) {
+    if (stepIdx >= sequence.length) {
       stopRouteTour();
-      const pts = orderedEntries.map(([, m]) => [m.getLatLng().lat, m.getLatLng().lng]);
-      fitMapToBounds(pts, true);
+      fitMapToBounds(mapState.currentBoundsPoints, true);
       showToast('Route tour complete!');
       return;
     }
 
-    const [, marker] = orderedEntries[stepIdx];
+    const { stop, marker } = sequence[stepIdx];
     const latlng = marker.getLatLng();
 
     mapState.tourLayerGroup.clearLayers();
@@ -459,7 +483,16 @@ function startAnimatedRouteTour() {
 
     mapState.map.flyTo(latlng, 13, { duration: 0.9 });
     setTimeout(() => {
-      if (mapState.isTourPlaying) marker.openPopup();
+      if (!mapState.isTourPlaying) return;
+      marker.openPopup();
+      const popupEl = marker.getPopup()?.getElement();
+      if (popupEl) {
+        popupEl.querySelectorAll('[data-visit-card-id]').forEach((card) => {
+          const isCurrent = card.dataset.visitCardId === stop.event.id;
+          card.classList.toggle('ring-2', isCurrent);
+          card.classList.toggle('ring-orange-400', isCurrent);
+        });
+      }
     }, 650);
 
     stepIdx++;
@@ -611,6 +644,132 @@ function renderMapifyBottomHud(tripStats, mapData) {
 }
 
 /**
+ * Build Single-Stop OR Combined Multi-Visit Glass Popup HTML
+ */
+function buildPinPopupHtml(groupStops, combinedLabel) {
+  const first = groupStops[0];
+  const primaryLocation = groupStops.find((s) => !s.isInheritedLoc)?.displayLocation || first.displayLocation;
+  const anyInherited = groupStops.every((s) => s.isInheritedLoc);
+  const mapUrl = getStopMapUrl(primaryLocation);
+
+  // Single visit at this address
+  if (groupStops.length === 1) {
+    const { event: ev, day, stopIndex, incomingLeg } = first;
+    const cat = getCategoryMeta(ev.category);
+    const transitLineHtml = incomingLeg && incomingLeg.mode !== 'same' && Number.isFinite(incomingLeg.durationMinutes)
+      ? `
+        <div class="rounded-xl bg-sky-500/15 border border-sky-400/30 px-2.5 py-1.5 text-[11px] font-semibold text-sky-200 flex items-center justify-between gap-2">
+          <span>Arriving Transit:</span>
+          <span class="tabular-nums text-white">${esc(formatDistance(incomingLeg.distanceMiles))} · ${esc(formatDuration(incomingLeg.durationMinutes))} ${incomingLeg.mode === 'walking' ? 'walk' : 'drive'}</span>
+        </div>
+      `
+      : '';
+
+    return `
+      <div class="space-y-2.5 text-xs text-white min-w-[230px] max-w-[280px]">
+        <div class="flex flex-wrap items-center justify-between gap-1.5">
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/12 text-sky-200">
+            ${esc(day.shortDay)} · Stop ${stopIndex + 1}
+          </span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-200 tabular-nums">
+            ${esc(ev.time)}${Number(ev.durationMinutes) > 0 ? ` (${esc(formatDuration(ev.durationMinutes))})` : ''}
+          </span>
+        </div>
+
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wider text-white/50">${esc(cat.label)}${ev.isFixed ? ' · Fixed Time' : ''}</div>
+          <p class="text-xs sm:text-sm font-semibold text-white leading-snug mt-0.5">${esc(ev.text)}</p>
+        </div>
+
+        <div class="text-[11px] text-white/75 flex items-start gap-1.5">
+          <span class="text-sky-300 shrink-0 mt-0.5">${ICONS.pin}</span>
+          <span class="break-words">${anyInherited ? `<strong class="text-orange-200">From prev day:</strong> ` : ''}${esc(getStopLocationLabel(primaryLocation))}</span>
+        </div>
+
+        ${transitLineHtml}
+
+        <div class="pt-1.5 border-t border-white/12 flex items-center gap-2">
+          <button
+            type="button"
+            data-mapify-jump-day="${esc(day.id)}"
+            data-mapify-jump-event="${esc(ev.id)}"
+            class="flex-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white text-[11px] font-semibold text-center cursor-pointer transition-all"
+          >Jump to Stop</button>
+          ${mapUrl ? `
+            <a
+              href="${esc(mapUrl)}"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="px-2.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 border border-white/15 text-white text-[11px] font-semibold text-center"
+            >Maps ↗</a>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  // Multiple visits at the same address (e.g., Stops 2 & 6)
+  const visitsHtml = groupStops.map((s) => {
+    const { event: ev, day, stopIndex, incomingLeg } = s;
+    const cat = getCategoryMeta(ev.category);
+    const transitHtml = incomingLeg && incomingLeg.mode !== 'same' && Number.isFinite(incomingLeg.durationMinutes)
+      ? `<div class="text-[10px] font-medium text-sky-300/90 tabular-nums">↳ Arriving: ${esc(formatDistance(incomingLeg.distanceMiles))} · ${esc(formatDuration(incomingLeg.durationMinutes))} ${incomingLeg.mode === 'walking' ? 'walk' : 'drive'}</div>`
+      : '';
+
+    return `
+      <div data-visit-card-id="${esc(ev.id)}" class="rounded-xl bg-white/[0.05] border border-white/10 p-2.5 space-y-1.5 transition-all">
+        <div class="flex flex-wrap items-center justify-between gap-1">
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-sky-500/20 text-sky-200">
+            ${esc(day.shortDay)} · Stop ${stopIndex + 1}
+          </span>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-200 tabular-nums">
+            ${esc(ev.time)}${Number(ev.durationMinutes) > 0 ? ` (${esc(formatDuration(ev.durationMinutes))})` : ''}
+          </span>
+        </div>
+        <div class="text-[10px] font-bold uppercase tracking-wider text-white/45">
+          ${esc(cat.label)}${ev.isFixed ? ' · Fixed Time' : ''}${ev.completed ? ' · Done ✓' : ''}
+        </div>
+        <p class="text-xs font-semibold text-white leading-snug">${esc(ev.text)}</p>
+        ${transitHtml}
+        <button
+          type="button"
+          data-mapify-jump-day="${esc(day.id)}"
+          data-mapify-jump-event="${esc(ev.id)}"
+          class="w-full mt-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-orange-500/85 to-sky-500/85 hover:from-orange-400 hover:to-sky-400 text-white text-[10px] font-semibold text-center cursor-pointer transition-all"
+        >Jump to Stop ${stopIndex + 1}</button>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="space-y-2 text-xs text-white min-w-[245px] max-w-[295px]">
+      <div class="flex items-center justify-between gap-2">
+        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-orange-500/20 border border-orange-400/35 text-orange-200">
+          ${groupStops.length} Visits · Stops ${esc(combinedLabel)}
+        </span>
+        ${mapUrl ? `
+          <a
+            href="${esc(mapUrl)}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="px-2 py-0.5 rounded-lg bg-white/12 hover:bg-white/22 border border-white/15 text-white text-[10px] font-semibold shrink-0"
+          >Maps ↗</a>
+        ` : ''}
+      </div>
+
+      <div class="text-[11px] text-white/75 flex items-start gap-1.5">
+        <span class="text-sky-300 shrink-0 mt-0.5">${ICONS.pin}</span>
+        <span class="break-words">${esc(getStopLocationLabel(primaryLocation))}</span>
+      </div>
+
+      <div class="space-y-2 max-h-[225px] overflow-y-auto pr-0.5">
+        ${visitsHtml}
+      </div>
+    </div>
+  `;
+}
+
+/**
  * Master Mapify Renderer (Syncs Map Pins, Polylines & Bottom 4-Graphic HUD)
  */
 export function renderMapify(tripStats) {
@@ -642,6 +801,7 @@ export function renderMapify(tripStats) {
   mapState.routeLayerGroup.clearLayers();
   mapState.markerLayerGroup.clearLayers();
   mapState.markersByEventId.clear();
+  mapState.tourSequence = [];
 
   const emptyOverlay = document.getElementById('mapifyEmptyOverlay');
   if (mapData.stops.length === 0) {
@@ -714,97 +874,67 @@ export function renderMapify(tripStats) {
     );
   });
 
-  // 2. Draw Numbered Category Pins with Rich Glassmorphic Popups
-  mapData.stops.forEach((stop) => {
-    const { event: ev, day, dayIndex, stopIndex, coords, displayLocation, isInheritedLoc, incomingLeg } = stop;
-    const cat = getCategoryMeta(ev.category);
-    const palette = DAY_ROUTE_PALETTE[dayIndex % DAY_ROUTE_PALETTE.length];
+  // 2. Group Co-Located Stops & Draw Unified Numbered Category Pins (e.g. "2 & 6")
+  const groupedLocations = groupCoLocatedStops(mapData.stops);
+  const markerByStopEventId = new Map();
+
+  groupedLocations.forEach((group) => {
+    const { coords, stops: groupStops } = group;
+    const primaryStop = groupStops[0];
+    const cat = getCategoryMeta(primaryStop.event.category);
+    const palette = DAY_ROUTE_PALETTE[primaryStop.dayIndex % DAY_ROUTE_PALETTE.length];
     const [r, g, b] = cat.rgb || [56, 189, 248];
     const pinColor = appStore.showAllDays ? palette.hex : `rgb(${r}, ${g}, ${b})`;
-    const pinLabel = appStore.showAllDays ? `D${dayIndex + 1}·${stopIndex + 1}` : `${stopIndex + 1}`;
-    const mapUrl = getStopMapUrl(displayLocation);
+    const pinLabel = formatGroupPinLabel(groupStops, appStore.showAllDays);
+    const anyFixed = groupStops.some((s) => s.event.isFixed);
+    const allCompleted = groupStops.every((s) => s.event.completed);
 
     allBoundsPoints.push([coords.lat, coords.lng]);
 
+    const pillWidth = Math.max(32, Math.round(pinLabel.length * 7.6 + 18));
     const pinHtml = `
-      <div class="mapify-pin ${ev.completed ? 'is-completed' : ''} ${ev.isFixed ? 'is-fixed' : ''}" style="--pin-rgb: ${r}, ${g}, ${b}; --pin-accent: ${pinColor};">
-        <span class="mapify-pin-num">${esc(pinLabel)}</span>
-        ${ev.isFixed ? `<span class="mapify-pin-badge mapify-pin-badge--lock" title="Fixed Time">🔒</span>` : ''}
-        ${ev.completed ? `<span class="mapify-pin-badge mapify-pin-badge--done" title="Completed">✓</span>` : ''}
+      <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+        <div class="mapify-pin ${allCompleted ? 'is-completed' : ''} ${anyFixed ? 'is-fixed' : ''}" style="--pin-rgb: ${r}, ${g}, ${b}; --pin-accent: ${pinColor};">
+          <span class="mapify-pin-num">${esc(pinLabel)}</span>
+          ${anyFixed ? `<span class="mapify-pin-badge mapify-pin-badge--lock" title="Fixed Time">🔒</span>` : ''}
+          ${allCompleted ? `<span class="mapify-pin-badge mapify-pin-badge--done" title="Completed">✓</span>` : ''}
+        </div>
       </div>
     `;
 
     const icon = L.divIcon({
       className: 'mapify-pin-container',
       html: pinHtml,
-      iconSize: appStore.showAllDays ? [42, 32] : [32, 32],
-      iconAnchor: appStore.showAllDays ? [21, 16] : [16, 16],
+      iconSize: [pillWidth, 32],
+      iconAnchor: [Math.round(pillWidth / 2), 16],
       popupAnchor: [0, -18]
     });
 
     const marker = L.marker([coords.lat, coords.lng], { icon }).addTo(mapState.markerLayerGroup);
+    const popupHtml = buildPinPopupHtml(groupStops, pinLabel);
 
-    const transitLineHtml = incomingLeg && incomingLeg.mode !== 'same' && Number.isFinite(incomingLeg.durationMinutes)
-      ? `
-        <div class="rounded-xl bg-sky-500/15 border border-sky-400/30 px-2.5 py-1.5 text-[11px] font-semibold text-sky-200 flex items-center justify-between gap-2">
-          <span>Arriving Transit:</span>
-          <span class="tabular-nums text-white">${esc(formatDistance(incomingLeg.distanceMiles))} · ${esc(formatDuration(incomingLeg.durationMinutes))} ${incomingLeg.mode === 'walking' ? 'walk' : 'drive'}</span>
-        </div>
-      `
-      : '';
-
-    const popupHtml = `
-      <div class="space-y-2.5 text-xs text-white min-w-[230px] max-w-[280px]">
-        <div class="flex flex-wrap items-center justify-between gap-1.5">
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-white/12 text-sky-200">
-            ${esc(day.shortDay)} · Stop ${stopIndex + 1}
-          </span>
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/20 text-orange-200 tabular-nums">
-            ${esc(ev.time)}${Number(ev.durationMinutes) > 0 ? ` (${esc(formatDuration(ev.durationMinutes))})` : ''}
-          </span>
-        </div>
-
-        <div>
-          <div class="text-[10px] font-bold uppercase tracking-wider text-white/50">${esc(cat.label)}${ev.isFixed ? ' · Fixed Time' : ''}</div>
-          <p class="text-xs sm:text-sm font-semibold text-white leading-snug mt-0.5">${esc(ev.text)}</p>
-        </div>
-
-        <div class="text-[11px] text-white/75 flex items-start gap-1.5">
-          <span class="text-sky-300 shrink-0 mt-0.5">${ICONS.pin}</span>
-          <span class="break-words">${isInheritedLoc ? `<strong class="text-orange-200">From prev day:</strong> ` : ''}${esc(getStopLocationLabel(displayLocation))}</span>
-        </div>
-
-        ${transitLineHtml}
-
-        <div class="pt-1.5 border-t border-white/12 flex items-center gap-2">
-          <button
-            type="button"
-            data-mapify-jump-day="${esc(day.id)}"
-            data-mapify-jump-event="${esc(ev.id)}"
-            class="flex-1 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white text-[11px] font-semibold text-center cursor-pointer transition-all"
-          >Jump to Stop</button>
-          ${mapUrl ? `
-            <a
-              href="${esc(mapUrl)}"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="px-2.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 border border-white/15 text-white text-[11px] font-semibold text-center"
-            >Maps ↗</a>
-          ` : ''}
-        </div>
-      </div>
-    `;
-
-    marker.bindPopup(popupHtml, { className: 'mapify-glass-popup', maxWidth: 300 });
+    marker.bindPopup(popupHtml, { className: 'mapify-glass-popup', maxWidth: 310 });
     marker.on('popupopen', (e) => {
       const popupEl = e.popup.getElement();
-      popupEl?.querySelector('[data-mapify-jump-event]')?.addEventListener('click', (btnEvt) => {
-        const jBtn = btnEvt.currentTarget;
-        mapifyHooks.focusTimelineEvent(jBtn.dataset.mapifyJumpDay, jBtn.dataset.mapifyJumpEvent);
+      popupEl?.querySelectorAll('[data-mapify-jump-event]').forEach((jBtn) => {
+        jBtn.addEventListener('click', () => {
+          mapifyHooks.focusTimelineEvent(jBtn.dataset.mapifyJumpDay, jBtn.dataset.mapifyJumpEvent);
+        });
       });
     });
 
-    mapState.markersByEventId.set(ev.id, marker);
+    groupStops.forEach((s) => {
+      mapState.markersByEventId.set(s.event.id, marker);
+      markerByStopEventId.set(s.event.id, marker);
+    });
+  });
+
+  // Preserve chronological order for Play Tour (visits repeat locations in exact schedule order)
+  mapData.stops.forEach((stop) => {
+    const marker = markerByStopEventId.get(stop.event.id);
+    if (marker) {
+      mapState.tourSequence.push({ stop, marker });
+    }
   });
 
   mapState.currentBoundsPoints = allBoundsPoints;
@@ -831,6 +961,14 @@ export function focusEventOnMap(dayId, eventId) {
     mapState.map.flyTo(latlng, 14, { duration: 1.0 });
     setTimeout(() => {
       marker.openPopup();
+      const popupEl = marker.getPopup()?.getElement();
+      if (popupEl) {
+        popupEl.querySelectorAll('[data-visit-card-id]').forEach((card) => {
+          const isTarget = card.dataset.visitCardId === eventId;
+          card.classList.toggle('ring-2', isTarget);
+          card.classList.toggle('ring-orange-400', isTarget);
+        });
+      }
     }, 650);
   } else {
     showToast('Add or verify an address on this stop to pin it on Mapify', 'error');

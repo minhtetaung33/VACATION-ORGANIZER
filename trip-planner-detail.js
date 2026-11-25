@@ -34,6 +34,11 @@ import {
   analyzeTripTimeline
 } from './trip-timeline-engine.js';
 
+import {
+  renderMapify,
+  focusEventOnMap
+} from './trip-mapify.js';
+
 /**
  * Callback Registry (Connected by main.js so detail views can trigger creator actions cleanly)
  */
@@ -74,50 +79,36 @@ function clearAllDragVisuals() {
 }
 
 /**
- * Render Total Trip Travel Telemetry Bar
+ * Two-Way Sync: Jump from a Mapify Pin Popup straight to the Timeline Card
  */
-function renderTripTelemetry(tripStats) {
-  const bar = document.getElementById('tripTravelSummaryBar');
-  if (!bar) return;
+export function scrollToTimelineEvent(dayId, eventId) {
+  const days = appStore.state.days || [];
+  const targetDayIdx = days.findIndex((d) => d.id === dayId);
+  if (targetDayIdx === -1) return;
 
-  const pctDone = tripStats.totalEvents > 0
-    ? Math.round((tripStats.completedCount / tripStats.totalEvents) * 100)
-    : 0;
+  if (!appStore.showAllDays && appStore.activeCarouselIndex !== targetDayIdx) {
+    appStore.activeCarouselIndex = targetDayIdx;
+    renderForecastStrip();
+    renderCarousel();
+    renderItinerary();
+  }
 
-  bar.innerHTML = `
-    <div class="flex flex-wrap items-center justify-between gap-2.5">
-      <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
-        <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-400/30 text-xs font-semibold text-sky-200 tabular-nums">
-          <span class="text-sky-300">${ICONS.route}</span>
-          <span>Trip Travel:</span>
-          <span class="text-white">${esc(formatDistance(tripStats.totalDistanceMiles))}</span>
-          <span class="text-white/40">·</span>
-          <span class="text-orange-200">${esc(formatDuration(tripStats.totalTravelMinutes))}</span>
-          ${tripStats.pendingCount > 0 ? `<span class="ml-1 text-[10px] font-medium text-sky-300/80 animate-pulse">syncing…</span>` : ''}
-        </div>
+  requestAnimationFrame(() => {
+    const cards = document.querySelectorAll('[data-drag-card]');
+    let targetCard = null;
+    cards.forEach((c) => {
+      if (c.dataset.day === dayId && c.dataset.event === eventId) {
+        targetCard = c;
+      }
+    });
 
-        <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-xl bg-emerald-500/12 border border-emerald-400/25 text-xs font-semibold text-emerald-200 tabular-nums">
-          <span class="text-emerald-300">${ICONS.check}</span>
-          <span>${tripStats.completedCount}/${tripStats.totalEvents} Done</span>
-          <span class="w-12 h-1.5 rounded-full bg-black/40 overflow-hidden hidden sm:inline-block">
-            <span class="block h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-400 transition-all duration-500" style="width: ${pctDone}%;"></span>
-          </span>
-        </div>
-
-        ${tripStats.warningCount > 0 ? `
-          <div class="warning-pulse inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-500/20 border border-rose-400/45 text-xs font-semibold text-rose-200">
-            <span class="text-rose-300">${ICONS.alert}</span>
-            <span>${tripStats.warningCount} Schedule Warning${tripStats.warningCount === 1 ? '' : 's'}</span>
-          </div>
-        ` : `
-          <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/[0.06] border border-white/10 text-[11px] font-medium text-white/70">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            <span>All timings look comfortable</span>
-          </div>
-        `}
-      </div>
-    </div>
-  `;
+    if (targetCard) {
+      targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      targetCard.classList.remove('map-focus-pulse');
+      void targetCard.offsetWidth;
+      targetCard.classList.add('map-focus-pulse');
+    }
+  });
 }
 
 /**
@@ -200,7 +191,7 @@ function renderTransitConnectorHtml(leg) {
 }
 
 /**
- * Render Detailed Interactive Drag & Drop Itinerary Timeline
+ * Render Detailed Interactive Drag & Drop Itinerary Timeline + Unified Mapify Card
  */
 export function renderItinerary() {
   const state = appStore.state;
@@ -217,7 +208,7 @@ export function renderItinerary() {
     : 'px-3 py-1 rounded-full text-xs font-medium text-white/60 hover:text-white cursor-pointer';
 
   const tripStats = analyzeTripTimeline(state);
-  renderTripTelemetry(tripStats);
+  renderMapify(tripStats);
 
   if (state.days.length === 0) {
     activeDayPill.textContent = '0 Days';
@@ -415,24 +406,38 @@ export function renderItinerary() {
                                 ${esc(ev.text)}
                               </p>
 
-                              <!-- Location Maps Link (Explicit OR Inherited from Previous Day End) -->
+                              <!-- Location Maps Link + Two-Way Mapify Locate Button -->
                               ${mapUrl ? `
-                                <a
-                                  href="${esc(mapUrl)}"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title="${isInheritedLoc ? 'Inherited from previous day end location · Edit stop to override' : isVerifiedPin ? `Verified address · Open ${esc(displayLocation)} in Google Maps` : `Open ${esc(displayLocation)} in Google Maps`}"
-                                  class="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-200 ${
-                                    isInheritedLoc
-                                      ? 'bg-sky-500/10 hover:bg-sky-500/20 border border-dashed border-sky-400/35 text-sky-200/85 hover:text-white'
-                                      : 'bg-sky-500/15 hover:bg-sky-500/30 border border-sky-400/30 hover:border-sky-300/60 text-sky-200 hover:text-white'
-                                  }"
-                                >
-                                  <span class="${isVerifiedPin ? 'text-emerald-300' : 'text-sky-300'} shrink-0">${ICONS.pin}</span>
-                                  ${isInheritedLoc ? `<span class="text-[10px] font-semibold text-orange-200/90 shrink-0">From prev day:</span>` : ''}
-                                  <span class="truncate">${esc(getStopLocationLabel(displayLocation))}</span>
-                                  <span class="opacity-65 shrink-0">${ICONS.link}</span>
-                                </a>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                  <a
+                                    href="${esc(mapUrl)}"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    title="${isInheritedLoc ? 'Inherited from previous day end location · Edit stop to override' : isVerifiedPin ? `Verified address · Open ${esc(displayLocation)} in Google Maps` : `Open ${esc(displayLocation)} in Google Maps`}"
+                                    class="inline-flex items-center gap-1.5 max-w-full px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-200 ${
+                                      isInheritedLoc
+                                        ? 'bg-sky-500/10 hover:bg-sky-500/20 border border-dashed border-sky-400/35 text-sky-200/85 hover:text-white'
+                                        : 'bg-sky-500/15 hover:bg-sky-500/30 border border-sky-400/30 hover:border-sky-300/60 text-sky-200 hover:text-white'
+                                    }"
+                                  >
+                                    <span class="${isVerifiedPin ? 'text-emerald-300' : 'text-sky-300'} shrink-0">${ICONS.pin}</span>
+                                    ${isInheritedLoc ? `<span class="text-[10px] font-semibold text-orange-200/90 shrink-0">From prev day:</span>` : ''}
+                                    <span class="truncate">${esc(getStopLocationLabel(displayLocation))}</span>
+                                    <span class="opacity-65 shrink-0">${ICONS.link}</span>
+                                  </a>
+
+                                  <button
+                                    type="button"
+                                    data-action="focus-map"
+                                    data-day="${esc(day.id)}"
+                                    data-event="${esc(ev.id)}"
+                                    title="Locate & highlight this stop on Mapify"
+                                    class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold bg-white/[0.07] hover:bg-orange-500/25 border border-white/12 hover:border-orange-400/40 text-white/75 hover:text-white transition-all cursor-pointer shrink-0"
+                                  >
+                                    <span class="text-orange-300">${ICONS.globe}</span>
+                                    <span>Mapify</span>
+                                  </button>
+                                </div>
                               ` : ''}
 
                               <!-- Schedule Shortage / Overlap Warning Banner -->
@@ -499,6 +504,7 @@ export function renderItinerary() {
       if (action === 'toggle-fixed') detailHooks.toggleEventFixed(day, event);
       if (action === 'toggle-travel-mode') detailHooks.toggleEventTravelMode(day, event, mode);
       if (action === 'auto-fit-day') detailHooks.handleAutoFitDay(day);
+      if (action === 'focus-map') focusEventOnMap(day, event);
     });
   });
 

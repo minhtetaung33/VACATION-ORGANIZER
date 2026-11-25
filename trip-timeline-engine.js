@@ -1,14 +1,14 @@
 /**
  * ============================================================================
- * SPATIAL TRIPOS · SMART TIMELINE, RIPPLE SCHEDULER & LIVE TRAVEL ENGINE (V3)
+ * SPATIAL TRIPOS · SMART TIMELINE, RIPPLE SCHEDULER & LIVE TRAVEL ENGINE (V4)
  * ============================================================================
  * Handles:
  *  1. Structured 15-minute Time Slots, Point-in-Time (0 min) stops & migration
  *  2. Flexible Ripple Auto-Adjustment & Fixed Time / Reservation anchoring
  *  3. Exact Street-Address Geocoding (Nominatim house-number priority + strict
  *     Photon ZIP/city/house validation) & Live Address Autocomplete / Verification
- *  4. Real Walking (OSRM Foot) vs Driving (OSRM Car) routing + per-leg toggle
- *  5. Previous-Day End Location inheritance + accurate Day & Trip Travel totals
+ *  4. Real Walking (OSRM Foot) & Driving (OSRM Car) routing + GeoJSON road paths
+ *  5. Previous-Day End Location inheritance + Mapify coordinates & route export
  * ============================================================================
  */
 
@@ -44,7 +44,7 @@ export const QUICK_TIME_JUMP_SLOTS = [
 ];
 
 /**
- * Built-in Coordinate Dictionary (Only used for bare city/landmark names or last-resort fallback)
+ * Built-in Coordinate Dictionary (Used for bare city/landmark names or last-resort fallback)
  */
 const PRESET_COORDINATES = {
   'west covina': { lat: 34.0686, lng: -117.9390 },
@@ -282,12 +282,12 @@ export function normalizeTripSchedules(trip) {
 
 /**
  * ============================================================================
- * 2. VERIFIED GEOCODING, AUTOCOMPLETE & REAL WALK/DRIVE ROUTING ENGINE (V3)
+ * 2. VERIFIED GEOCODING, AUTOCOMPLETE & REAL ROAD/FOOTPATH GEOMETRY ENGINE (V4)
  * ============================================================================
  */
 
 const STORAGE_GEO_KEY = 'tripos_geo_cache_v3';
-const STORAGE_ROUTE_KEY = 'tripos_route_cache_v3';
+const STORAGE_ROUTE_KEY = 'tripos_route_cache_v4';
 
 const geoMemoryCache = new Map();
 const routeMemoryCache = new Map();
@@ -310,7 +310,7 @@ function loadCacheFromStorage(key, map) {
 
 function saveCacheToStorage(key, map) {
   try {
-    const entries = Array.from(map.entries()).slice(-240);
+    const entries = Array.from(map.entries()).slice(-180);
     window.localStorage?.setItem(key, JSON.stringify(Object.fromEntries(entries)));
   } catch (err) {
     // Ignore storage quota errors
@@ -319,16 +319,6 @@ function saveCacheToStorage(key, map) {
 
 loadCacheFromStorage(STORAGE_GEO_KEY, geoMemoryCache);
 loadCacheFromStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
-
-// Remove old mis-pinned v1/v2 caches cleanly
-try {
-  window.localStorage?.removeItem('tripos_geo_cache_v1');
-  window.localStorage?.removeItem('tripos_route_cache_v1');
-  window.localStorage?.removeItem('tripos_geo_cache_v2');
-  window.localStorage?.removeItem('tripos_route_cache_v2');
-} catch (err) {
-  // Ignore
-}
 
 async function fetchJsonWithTimeout(url, timeoutMs = 5500, options = {}) {
   const controller = new AbortController();
@@ -458,6 +448,34 @@ function lookupPresetCoordinates(rawQuery) {
   return bestKey ? PRESET_COORDINATES[bestKey] : null;
 }
 
+/**
+ * Synchronous coordinate lookup for Mapify markers
+ */
+export function resolveCachedCoords(rawLoc, explicitCoords = null) {
+  if (explicitCoords && Number.isFinite(Number(explicitCoords.lat)) && Number.isFinite(Number(explicitCoords.lng))) {
+    return { lat: Number(explicitCoords.lat), lng: Number(explicitCoords.lng) };
+  }
+  const cleaned = extractLocationText(rawLoc);
+  if (!cleaned) return null;
+
+  const direct = parseDirectCoords(cleaned);
+  if (direct) return direct;
+
+  const normKey = normalizeLocKey(cleaned);
+  if (geoMemoryCache.has(normKey)) {
+    const cached = geoMemoryCache.get(normKey);
+    if (cached && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))) {
+      return { lat: Number(cached.lat), lng: Number(cached.lng) };
+    }
+  }
+
+  if (!looksLikeStreetAddress(cleaned) && PRESET_COORDINATES[normKey]) {
+    return PRESET_COORDINATES[normKey];
+  }
+
+  return null;
+}
+
 function formatCandidateLabel(c) {
   const line1 = c.name && (!c.houseNumber || !c.street)
     ? c.name
@@ -550,11 +568,11 @@ function scoreCandidate(cand, expected) {
 
   if (expected.houseNumber) {
     if (candHouseLow && candHouseLow === expected.houseNumber) {
-      score += 65; // Exact house number match!
+      score += 65;
     } else if (candHouseLow && candHouseLow !== expected.houseNumber) {
-      score -= 40; // Wrong house number
+      score -= 40;
     } else {
-      score -= 22; // No house number (dropped on street midpoint — causes 2.8 mi bug!)
+      score -= 22;
     }
   }
 
@@ -585,7 +603,6 @@ function scoreCandidate(cand, expected) {
   return score;
 }
 
-// Polite Nominatim queue (respects 1 req/sec policy so we never get 429 blocked)
 let nominatimQueue = Promise.resolve();
 function queryNominatimCandidates(query, limit = 5) {
   const run = async () => {
@@ -641,14 +658,12 @@ export async function searchAddressSuggestions(rawQuery, dayHint = '') {
   let candidates = [];
 
   if (isStreet) {
-    // Street addresses: query Nominatim (exact US house numbers) + Photon in parallel
     const [nomRes, phoRes] = await Promise.all([
       queryNominatimCandidates(queryWithHint, 5),
       queryPhotonCandidates(queryWithHint, 5)
     ]);
     candidates = [...nomRes, ...phoRes];
   } else {
-    // Place/Landmark names: Photon is super fast for POIs; add Nominatim if sparse
     candidates = await queryPhotonCandidates(queryWithHint, 6);
     if (candidates.length < 2) {
       const nomRes = await queryNominatimCandidates(queryWithHint, 4);
@@ -656,7 +671,6 @@ export async function searchAddressSuggestions(rawQuery, dayHint = '') {
     }
   }
 
-  // Score, deduplicate, and return top 5 verified suggestions
   const scored = candidates
     .map((c) => ({
       ...c,
@@ -687,9 +701,6 @@ export async function searchAddressSuggestions(rawQuery, dayHint = '') {
   return unique;
 }
 
-/**
- * Detailed Geocoding with Strict Street-Address Verification
- */
 async function geocodeLocationDetailed(rawLoc, dayHint = '') {
   const cleaned = extractLocationText(rawLoc);
   if (!cleaned) return null;
@@ -706,7 +717,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
 
   const isStreet = looksLikeStreetAddress(cleaned);
 
-  // Only short single-word/city presets skip network
   if (!isStreet) {
     const exactPreset = PRESET_COORDINATES[normKey];
     if (exactPreset) {
@@ -745,7 +755,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
     };
 
     if (isStreet) {
-      // 1. Nominatim FIRST for exact US street house numbers (prevents 2.8 mi street-center error!)
       const nomList = await queryNominatimCandidates(primaryQuery, 5);
       const bestNom = pickBest(nomList);
       if (bestNom && (bestNom.exactHouseMatch || bestNom.score >= 45)) {
@@ -757,7 +766,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
         });
       }
 
-      // 2. Photon SECOND with strict scoring
       const phoList = await queryPhotonCandidates(primaryQuery, 6);
       const combinedBest = pickBest([...nomList, ...phoList]);
       if (combinedBest && combinedBest.score >= 15) {
@@ -769,7 +777,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
         });
       }
     } else {
-      // Non-street landmark / business / city: Photon first, Nominatim second
       const phoList = await queryPhotonCandidates(primaryQuery, 6);
       const bestPho = pickBest(phoList);
       if (bestPho && bestPho.score >= 0) {
@@ -793,7 +800,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
       }
     }
 
-    // 3. City / ZIP fallback so routing never stays broken
     const { remainder, cityOnly } = extractCityFallback(cleaned);
     if (remainder) {
       const remList = await queryPhotonCandidates(remainder, 3);
@@ -831,9 +837,6 @@ async function geocodeLocationDetailed(rawLoc, dayHint = '') {
   }
 }
 
-/**
- * Verify a user-entered address before saving (used by Add/Edit Stop modal)
- */
 export async function verifyAddress(rawLoc, dayHint = '') {
   const cleaned = extractLocationText(rawLoc);
   if (!cleaned) {
@@ -887,8 +890,13 @@ export function haversineMiles(a, b) {
 
 function estimateFallbackLeg(coordA, coordB, requestedMode = 'auto') {
   const straight = haversineMiles(coordA, coordB);
+  const straightLine = [
+    [coordA.lat, coordA.lng],
+    [coordB.lat, coordB.lng]
+  ];
+
   if (straight < 0.06) {
-    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
+    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false, geometry: straightLine };
   }
 
   const useWalk = requestedMode === 'walk' || (requestedMode === 'auto' && straight <= 0.55);
@@ -898,7 +906,8 @@ function estimateFallbackLeg(coordA, coordB, requestedMode = 'auto') {
       distanceMiles: walkMiles,
       durationMinutes: Math.max(2, Math.round((walkMiles / 3.0) * 60)),
       mode: 'walking',
-      estimated: true
+      estimated: true,
+      geometry: straightLine
     };
   }
 
@@ -909,7 +918,8 @@ function estimateFallbackLeg(coordA, coordB, requestedMode = 'auto') {
     distanceMiles: roadMiles,
     durationMinutes: mins,
     mode: 'driving',
-    estimated: true
+    estimated: true,
+    geometry: straightLine
   };
 }
 
@@ -920,32 +930,41 @@ function buildRouteCacheKey(fromStr, toStr, requestedMode = 'auto') {
 }
 
 /**
- * Synchronous lookup for immediate UI rendering
+ * Synchronous lookup for immediate UI & Mapify rendering
  */
 export function getCachedTravelLeg(fromLoc, toLoc, requestedMode = 'auto', fromCoords = null, toCoords = null) {
   const fromClean = extractLocationText(fromLoc);
   const toClean = extractLocationText(toLoc);
   if (!fromClean || !toClean) return null;
 
+  const resolvedA = resolveCachedCoords(fromClean, fromCoords);
+  const resolvedB = resolveCachedCoords(toClean, toCoords);
+
   if (normalizeLocKey(fromClean) === normalizeLocKey(toClean)) {
     return {
       fromLocation: fromClean,
       toLocation: toClean,
+      fromCoords: resolvedA,
+      toCoords: resolvedB,
       distanceMiles: 0,
       durationMinutes: 0,
       mode: 'same',
       requestedMode,
+      geometry: resolvedA ? [[resolvedA.lat, resolvedA.lng]] : [],
       status: 'ready'
     };
   }
 
   const key = buildRouteCacheKey(fromClean, toClean, requestedMode);
   if (routeMemoryCache.has(key)) {
+    const cached = routeMemoryCache.get(key);
     return {
       fromLocation: fromClean,
       toLocation: toClean,
+      fromCoords: resolvedA,
+      toCoords: resolvedB,
       requestedMode,
-      ...routeMemoryCache.get(key),
+      ...cached,
       status: 'ready'
     };
   }
@@ -954,22 +973,24 @@ export function getCachedTravelLeg(fromLoc, toLoc, requestedMode = 'auto', fromC
     return {
       fromLocation: fromClean,
       toLocation: toClean,
+      fromCoords: resolvedA,
+      toCoords: resolvedB,
       distanceMiles: null,
       durationMinutes: null,
       mode: requestedMode === 'walk' ? 'walking' : 'driving',
       requestedMode,
+      geometry: [],
       status: 'unavailable'
     };
   }
 
-  const cachedA = fromCoords || parseDirectCoords(fromClean) || geoMemoryCache.get(normalizeLocKey(fromClean)) || (!looksLikeStreetAddress(fromClean) ? PRESET_COORDINATES[normalizeLocKey(fromClean)] : null);
-  const cachedB = toCoords || parseDirectCoords(toClean) || geoMemoryCache.get(normalizeLocKey(toClean)) || (!looksLikeStreetAddress(toClean) ? PRESET_COORDINATES[normalizeLocKey(toClean)] : null);
-
-  if (cachedA && cachedB) {
-    const est = estimateFallbackLeg(cachedA, cachedB, requestedMode);
+  if (resolvedA && resolvedB) {
+    const est = estimateFallbackLeg(resolvedA, resolvedB, requestedMode);
     return {
       fromLocation: fromClean,
       toLocation: toClean,
+      fromCoords: resolvedA,
+      toCoords: resolvedB,
       requestedMode,
       ...est,
       status: 'estimated'
@@ -979,12 +1000,37 @@ export function getCachedTravelLeg(fromLoc, toLoc, requestedMode = 'auto', fromC
   return {
     fromLocation: fromClean,
     toLocation: toClean,
+    fromCoords: resolvedA,
+    toCoords: resolvedB,
     distanceMiles: null,
     durationMinutes: null,
     mode: requestedMode === 'walk' ? 'walking' : 'driving',
     requestedMode,
+    geometry: [],
     status: 'loading'
   };
+}
+
+function geoJsonCoordsToLatLng(geoCoords) {
+  if (!Array.isArray(geoCoords) || geoCoords.length < 2) return [];
+  // Downsample very long polylines gently so localStorage stays compact while curves stay crisp
+  const step = geoCoords.length > 220 ? Math.ceil(geoCoords.length / 220) : 1;
+  const pts = [];
+  for (let i = 0; i < geoCoords.length; i += step) {
+    const pair = geoCoords[i];
+    if (Array.isArray(pair) && pair.length >= 2) {
+      pts.push([Number(pair[1]), Number(pair[0])]);
+    }
+  }
+  const last = geoCoords[geoCoords.length - 1];
+  if (Array.isArray(last) && last.length >= 2) {
+    const lastLatLng = [Number(last[1]), Number(last[0])];
+    const prev = pts[pts.length - 1];
+    if (!prev || prev[0] !== lastLatLng[0] || prev[1] !== lastLatLng[1]) {
+      pts.push(lastLatLng);
+    }
+  }
+  return pts;
 }
 
 async function resolveRouteLeg(fromLoc, toLoc, dayHint = '', requestedMode = 'auto', fromCoords = null, toCoords = null) {
@@ -993,7 +1039,7 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '', requestedMode = 'au
   if (!fromClean || !toClean) return null;
 
   if (normalizeLocKey(fromClean) === normalizeLocKey(toClean)) {
-    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
+    return { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false, geometry: [] };
   }
 
   const modePref = ['auto', 'drive', 'walk'].includes(requestedMode) ? requestedMode : 'auto';
@@ -1014,44 +1060,61 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '', requestedMode = 'au
 
     const straight = haversineMiles(coordA, coordB);
     if (straight < 0.06) {
-      const sameRes = { distanceMiles: 0, durationMinutes: 0, mode: 'same', estimated: false };
+      const sameRes = {
+        distanceMiles: 0,
+        durationMinutes: 0,
+        mode: 'same',
+        estimated: false,
+        geometry: [[coordA.lat, coordA.lng]]
+      };
       routeMemoryCache.set(key, sameRes);
       saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
       return sameRes;
     }
 
-    // Decide Walking vs Driving (Auto uses Walking when <= 0.55 mi straight-line, e.g., 4050 University Ave -> 3649 Mission Inn Ave!)
     const shouldWalk = modePref === 'walk' || (modePref === 'auto' && straight <= 0.55);
 
     if (shouldWalk) {
-      // 1. Try real OSRM Pedestrian Footpath Router
-      const footUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=false`;
+      const footUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=full&geometries=geojson`;
       const footData = await fetchJsonWithTimeout(footUrl, 4500);
       const footRoute = footData?.routes?.[0];
       if (footRoute && Number.isFinite(footRoute.distance)) {
         const miles = Number((footRoute.distance / 1609.344).toFixed(1));
-        const mins = Math.max(2, Math.round((miles / 3.0) * 60)); // Google-Maps-aligned 3.0 mph walking speed
-        const resolved = { distanceMiles: miles, durationMinutes: mins, mode: 'walking', estimated: false };
+        const mins = Math.max(2, Math.round((miles / 3.0) * 60));
+        const geometry = geoJsonCoordsToLatLng(footRoute.geometry?.coordinates);
+        const resolved = {
+          distanceMiles: miles,
+          durationMinutes: mins,
+          mode: 'walking',
+          estimated: false,
+          geometry: geometry.length >= 2 ? geometry : [[coordA.lat, coordA.lng], [coordB.lat, coordB.lng]]
+        };
         routeMemoryCache.set(key, resolved);
         saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
         return resolved;
       }
 
-      // 2. Fallback walking estimate if foot router is busy
       const walkFallback = estimateFallbackLeg(coordA, coordB, 'walk');
       routeMemoryCache.set(key, walkFallback);
       saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
       return walkFallback;
     }
 
-    // Driving mode: Live OSRM Road Router
-    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=false`;
+    // Driving mode: Live OSRM Road Router with full GeoJSON road path
+    const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${coordA.lng},${coordA.lat};${coordB.lng},${coordB.lat}?overview=full&geometries=geojson`;
     const data = await fetchJsonWithTimeout(osrmUrl, 5500);
     const route = data?.routes?.[0];
     if (route && Number.isFinite(route.distance) && Number.isFinite(route.duration)) {
       const miles = Number((route.distance / 1609.344).toFixed(1));
       const mins = Math.max(1, Math.round(route.duration / 60));
-      const resolved = { distanceMiles: miles, durationMinutes: mins, mode: 'driving', estimated: false };
+      const geometry = geoJsonCoordsToLatLng(route.geometry?.coordinates);
+      const resolved = {
+        distanceMiles: miles,
+        durationMinutes: mins,
+        mode: 'driving',
+        estimated: false,
+        geometry: geometry.length >= 2 ? geometry : [[coordA.lat, coordA.lng], [coordB.lat, coordB.lng]]
+      };
       routeMemoryCache.set(key, resolved);
       saveCacheToStorage(STORAGE_ROUTE_KEY, routeMemoryCache);
       return resolved;
@@ -1071,10 +1134,6 @@ async function resolveRouteLeg(fromLoc, toLoc, dayHint = '', requestedMode = 'au
   }
 }
 
-/**
- * Helper: Build the ordered list of effective locations & verified coords for a day,
- * automatically inheriting the previous day's ending location for stop #1 if blank.
- */
 function resolveDayLocationChain(day, prevDayEnd = { text: '', coords: null }) {
   const events = Array.isArray(day?.events) ? day.events : [];
   const prevText = String(prevDayEnd?.text || '').trim();
@@ -1112,13 +1171,15 @@ function resolveDayLocationChain(day, prevDayEnd = { text: '', coords: null }) {
 }
 
 /**
- * Resolve all consecutive destination pairs across a trip in the background.
+ * Resolve all consecutive destination pairs AND standalone stop pins in the background
  */
 export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
   if (!trip || !Array.isArray(trip.days)) return;
 
-  const jobs = [];
-  const seenKeys = new Set();
+  const routeJobs = [];
+  const pinJobs = [];
+  const seenRouteKeys = new Set();
+  const seenPinKeys = new Set();
   let prevDayEnd = { text: '', coords: null };
 
   trip.days.forEach((day) => {
@@ -1129,13 +1190,21 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
     (day.events || []).forEach((ev, idx) => {
       const entry = effectiveEntries[idx];
       if (entry?.text) {
-        if (lastEntry && normalizeLocKey(extractLocationText(lastEntry.text)) !== normalizeLocKey(extractLocationText(entry.text))) {
+        // Ensure individual stop coordinates get resolved even if it's the only stop in a day
+        const cleanText = extractLocationText(entry.text);
+        const normPinKey = normalizeLocKey(cleanText);
+        if (cleanText && !resolveCachedCoords(cleanText, entry.coords) && !seenPinKeys.has(normPinKey)) {
+          seenPinKeys.add(normPinKey);
+          pinJobs.push({ text: cleanText, hint: dayHint });
+        }
+
+        if (lastEntry && normalizeLocKey(extractLocationText(lastEntry.text)) !== normPinKey) {
           const modePref = ev.travelMode || 'auto';
           const k = buildRouteCacheKey(lastEntry.text, entry.text, modePref);
-          if (!routeMemoryCache.has(k) && !seenKeys.has(k)) {
-            seenKeys.add(k);
+          if (!routeMemoryCache.has(k) && !seenRouteKeys.has(k)) {
+            seenRouteKeys.add(k);
             failedRouteKeys.delete(k);
-            jobs.push({
+            routeJobs.push({
               from: lastEntry.text,
               to: entry.text,
               fromCoords: lastEntry.coords,
@@ -1152,11 +1221,16 @@ export async function computeTripTravelLegs(trip, onUpdate = () => {}) {
     prevDayEnd = endEntry;
   });
 
-  if (jobs.length === 0) return;
-
-  for (const job of jobs) {
+  for (const job of routeJobs) {
     await resolveRouteLeg(job.from, job.to, job.hint, job.modePref, job.fromCoords, job.toCoords);
     onUpdate();
+  }
+
+  for (const pJob of pinJobs) {
+    if (!resolveCachedCoords(pJob.text)) {
+      await geocodeLocationDetailed(pJob.text, pJob.hint);
+      onUpdate();
+    }
   }
 }
 
@@ -1422,7 +1496,7 @@ export function autoFitDaySchedule(day) {
 
 /**
  * ============================================================================
- * 4. DAY & TRIP TRAVEL ANALYTICS + CONFLICT WARNING ENGINE
+ * 4. DAY & TRIP TRAVEL ANALYTICS + MAPIFY EXPORT ENGINE
  * ============================================================================
  */
 
@@ -1583,4 +1657,67 @@ export function analyzeTripTimeline(trip) {
 
   summary.totalDistanceMiles = Number(summary.totalDistanceMiles.toFixed(1));
   return summary;
+}
+
+/**
+ * Export Structured Coordinates, Polylines & Stop Details for Mapify
+ */
+export function getTripMapData(trip, scopeDayId = null) {
+  const output = {
+    stops: [],
+    legs: [],
+    allLegs: [],
+    pinnedCount: 0
+  };
+
+  if (!trip || !Array.isArray(trip.days)) return output;
+
+  let prevDayEnd = { text: '', coords: null };
+
+  trip.days.forEach((day, dayIndex) => {
+    const dayStats = analyzeDayTimeline(day, prevDayEnd);
+    const { effectiveEntries, inheritedStartLocation, inheritedEventId, endEntry } = resolveDayLocationChain(day, prevDayEnd);
+    const inScope = !scopeDayId || day.id === scopeDayId;
+
+    (day.events || []).forEach((ev, stopIndex) => {
+      const incomingLeg = dayStats.legsByEventId.get(ev.id) || null;
+      if (incomingLeg) {
+        output.allLegs.push(incomingLeg);
+      }
+
+      if (!inScope) return;
+
+      const eff = effectiveEntries[stopIndex];
+      const displayLocation = eff?.text || '';
+      const coords = displayLocation ? resolveCachedCoords(displayLocation, eff?.coords) : null;
+
+      if (coords) {
+        output.stops.push({
+          event: ev,
+          day,
+          dayIndex,
+          stopIndex,
+          coords,
+          displayLocation,
+          isInheritedLoc: !ev.location && inheritedEventId === ev.id && Boolean(inheritedStartLocation),
+          incomingLeg
+        });
+      }
+
+      if (incomingLeg && incomingLeg.mode !== 'same') {
+        output.legs.push({
+          ...incomingLeg,
+          dayIndex,
+          dayShort: day.shortDay || `Day ${dayIndex + 1}`
+        });
+      }
+    });
+
+    if (endEntry?.text) {
+      prevDayEnd = endEntry;
+    }
+  });
+
+  output.pinnedCount = output.stops.length;
+  return output;
 }

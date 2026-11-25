@@ -17,6 +17,10 @@
   <!-- Load jsPDF for Glassmorphic Trip PDF Export -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+  <!-- Load Leaflet CSS & JS for Interactive Mapify Travel Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
   <!-- Tailwind Theme & Custom Animations -->
   <script>
     tailwind.config = {
@@ -314,7 +318,7 @@
       <div id="carouselDots" class="flex items-center justify-center gap-2 pt-1"></div>
     </section>
 
-    <!-- 5. INTERACTIVE DRAG & DROP ITINERARY SCHEDULE PANEL (Synced with 3D Carousel) -->
+    <!-- 5. INTERACTIVE DRAG & DROP ITINERARY SCHEDULE PANEL + MAPIFY -->
     <section class="space-y-4 animate-fadeUp" style="animation-delay: 200ms;">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap items-center gap-2.5 min-w-0">
@@ -333,8 +337,8 @@
         </div>
       </div>
 
-      <!-- Live Total Trip Travel Telemetry & Progress Bar -->
-      <div id="tripTravelSummaryBar" class="rounded-2xl bg-[#16171d]/65 backdrop-blur-2xl border border-white/12 px-4 py-3 shadow-xl shadow-black/30"></div>
+      <!-- Unified Mapify Interactive Travel Map + 4-Graphic Spatial Command HUD -->
+      <div id="tripTravelSummaryBar" class="rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/15 shadow-2xl shadow-black/45 overflow-hidden"></div>
 
       <div id="itineraryContainer" class="space-y-5"></div>
     </section>

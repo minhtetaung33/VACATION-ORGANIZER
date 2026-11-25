@@ -19,10 +19,16 @@ import {
 
 import {
   registerDetailHooks,
+  scrollToTimelineEvent,
   renderItinerary,
   renderAll,
   openSavePdfFlow
 } from './trip-planner-detail.js';
+
+import {
+  registerMapifyHooks,
+  invalidateMapifySize
+} from './trip-mapify.js';
 
 import {
   openHeroModal,
@@ -78,6 +84,10 @@ registerDetailHooks({
   toggleEventTravelMode,
   handleAutoFitDay,
   openCustomCategoriesModal
+});
+
+registerMapifyHooks({
+  focusTimelineEvent: scrollToTimelineEvent
 });
 
 /**
@@ -208,11 +218,14 @@ function bindGlobalEvents() {
     { passive: true }
   );
 
-  // Recompute 3D spacing on window resize & phone rotation
+  // Recompute 3D spacing & Mapify viewport size on window resize or phone rotation
   let resizeTimer = null;
   const handleViewportChange = () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => renderCarousel(), 80);
+    resizeTimer = setTimeout(() => {
+      renderCarousel();
+      invalidateMapifySize();
+    }, 90);
   };
   window.addEventListener('resize', handleViewportChange);
   window.addEventListener('orientationchange', handleViewportChange);

@@ -26,35 +26,58 @@ export function registerMapifyHooks(overrides = {}) {
 }
 
 /**
- * Map Tile Themes (100% Free, Zero-API-Key Esri Basemaps Matching VisionOS Dark & Daylight Views)
+ * Map Tile Themes (100% Free, Zero-API-Key Esri Basemaps + Layered Street & City Labels)
  */
 const MAP_TILE_THEMES = {
   dark: {
     label: 'Dark',
-    urls: [
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}'
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 16,
+        zIndex: 1
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 16,
+        zIndex: 2
+      }
     ],
     attribution: 'Tiles &copy; Esri',
-    maxNativeZoom: 16,
     maxZoom: 19
   },
   street: {
     label: 'Street',
-    urls: [
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 18,
+        zIndex: 1
+      }
     ],
     attribution: 'Tiles &copy; Esri',
-    maxNativeZoom: 18,
     maxZoom: 19
   },
   satellite: {
     label: 'Satellite',
-    urls: [
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    layers: [
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 18,
+        zIndex: 1
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 18,
+        zIndex: 2
+      },
+      {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+        maxNativeZoom: 18,
+        zIndex: 3
+      }
     ],
     attribution: 'Tiles &copy; Esri',
-    maxNativeZoom: 18,
     maxZoom: 19
   }
 };
@@ -77,10 +100,12 @@ const mapState = {
   routeLayerGroup: null,
   markerLayerGroup: null,
   tourLayerGroup: null,
+  resizeObserver: null,
   theme: 'dark',
   isCollapsed: false,
   isExpandedHeight: false,
   markersByEventId: new Map(),
+  currentBoundsPoints: [],
   lastFitSignature: '',
   tourTimer: null,
   isTourPlaying: false
@@ -122,22 +147,22 @@ function setMapTileTheme(themeKey) {
   mapState.tileLayers = [];
 
   const cfg = MAP_TILE_THEMES[themeKey];
-  cfg.urls.forEach((url) => {
-    const layer = window.L.tileLayer(url, {
+  cfg.layers.forEach((layerCfg) => {
+    const layer = window.L.tileLayer(layerCfg.url, {
       attribution: cfg.attribution,
-      maxNativeZoom: cfg.maxNativeZoom || 18,
-      maxZoom: cfg.maxZoom || 19
+      maxNativeZoom: layerCfg.maxNativeZoom || 18,
+      maxZoom: cfg.maxZoom || 19,
+      zIndex: layerCfg.zIndex || 1
     }).addTo(mapState.map);
-    layer.bringToBack();
     mapState.tileLayers.push(layer);
   });
 }
 
-export function invalidateMapifySize() {
-  if (mapState.map && !mapState.isCollapsed) {
-    setTimeout(() => {
-      mapState.map?.invalidateSize({ animate: false });
-    }, 120);
+export function invalidateMapifySize(refit = false) {
+  if (!mapState.map || mapState.isCollapsed) return;
+  mapState.map.invalidateSize({ animate: false });
+  if (refit && mapState.currentBoundsPoints.length > 0) {
+    fitMapToBounds(mapState.currentBoundsPoints, true);
   }
 }
 
@@ -169,6 +194,7 @@ function fitMapToBounds(points, force = false) {
  */
 function ensureLeafletInitialized() {
   const canvasEl = document.getElementById('mapifyCanvas');
+  const stageWrap = document.getElementById('mapifyStageWrap');
   if (!canvasEl) return false;
 
   if (!window.L) {
@@ -192,10 +218,8 @@ function ensureLeafletInitialized() {
     attributionControl: true
   });
 
-  // Add subtle top-right zoom buttons
   L.control.zoom({ position: 'topright' }).addTo(map);
 
-  // Enable scroll wheel zoom when user clicks/focuses the map, disable on mouseleave
   canvasEl.addEventListener('click', () => map.scrollWheelZoom.enable());
   canvasEl.addEventListener('mouseleave', () => map.scrollWheelZoom.disable());
 
@@ -205,6 +229,19 @@ function ensureLeafletInitialized() {
   mapState.tourLayerGroup = L.layerGroup().addTo(map);
 
   setMapTileTheme(mapState.theme);
+
+  // Automatically re-measure container size whenever CSS/layout finishes settling
+  if (typeof ResizeObserver !== 'undefined' && stageWrap && !mapState.resizeObserver) {
+    mapState.resizeObserver = new ResizeObserver(() => {
+      invalidateMapifySize(false);
+    });
+    mapState.resizeObserver.observe(stageWrap);
+  }
+
+  // Post-mount passes ensure full-height tile rendering & bounds fit after initial page animation
+  setTimeout(() => invalidateMapifySize(true), 180);
+  setTimeout(() => invalidateMapifySize(true), 750);
+
   return true;
 }
 
@@ -292,9 +329,9 @@ function ensureMapifyShell() {
         </div>
       </div>
 
-      <!-- 2. Interactive Map Viewport Stage -->
-      <div id="mapifyStageWrap" class="relative w-full h-[320px] sm:h-[390px] bg-[#0b0e15] transition-all duration-300">
-        <div id="mapifyCanvas" class="w-full h-full z-0"></div>
+      <!-- 2. Interactive Map Viewport Stage (Explicit height prevents half-black render before Tailwind JIT) -->
+      <div id="mapifyStageWrap" style="height: 360px;" class="relative w-full bg-[#0b0e15] transition-all duration-300">
+        <div id="mapifyCanvas" style="width: 100%; height: 100%;" class="z-0"></div>
 
         <!-- Subtle Top-Left Legend Overlay -->
         <div id="mapifyLegendPill" class="pointer-events-none absolute top-3 left-3 z-[400] hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#12151f]/85 backdrop-blur-xl border border-white/15 text-[10px] font-semibold text-white/80 shadow-lg">
@@ -327,6 +364,7 @@ function ensureMapifyShell() {
   document.getElementById('mapifyFitBtn')?.addEventListener('click', () => {
     const allPoints = Array.from(mapState.markersByEventId.values()).map((m) => [m.getLatLng().lat, m.getLatLng().lng]);
     if (allPoints.length > 0) {
+      invalidateMapifySize(false);
       fitMapToBounds(allPoints, true);
       showToast('Centered Mapify on route');
     } else {
@@ -339,11 +377,9 @@ function ensureMapifyShell() {
     const btn = document.getElementById('mapifyExpandBtn');
     if (!wrap || !btn) return;
     mapState.isExpandedHeight = !mapState.isExpandedHeight;
-    wrap.className = mapState.isExpandedHeight
-      ? 'relative w-full h-[460px] sm:h-[540px] bg-[#0b0e15] transition-all duration-300'
-      : 'relative w-full h-[320px] sm:h-[390px] bg-[#0b0e15] transition-all duration-300';
+    wrap.style.height = mapState.isExpandedHeight ? '520px' : '360px';
     btn.textContent = mapState.isExpandedHeight ? 'Compact' : 'Expand';
-    invalidateMapifySize();
+    setTimeout(() => invalidateMapifySize(true), 120);
   });
 
   document.getElementById('mapifyCollapseBtn')?.addEventListener('click', () => {
@@ -358,7 +394,7 @@ function ensureMapifyShell() {
     } else {
       wrap.classList.remove('hidden');
       lbl.textContent = 'Hide Map';
-      invalidateMapifySize();
+      setTimeout(() => invalidateMapifySize(true), 120);
     }
   });
 
@@ -609,6 +645,7 @@ export function renderMapify(tripStats) {
 
   const emptyOverlay = document.getElementById('mapifyEmptyOverlay');
   if (mapData.stops.length === 0) {
+    mapState.currentBoundsPoints = [];
     emptyOverlay?.classList.remove('hidden');
     return;
   }
@@ -770,6 +807,8 @@ export function renderMapify(tripStats) {
     mapState.markersByEventId.set(ev.id, marker);
   });
 
+  mapState.currentBoundsPoints = allBoundsPoints;
+  mapState.map.invalidateSize({ animate: false });
   fitMapToBounds(allBoundsPoints, false);
 }
 

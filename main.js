@@ -7,6 +7,7 @@ import {
   setActiveCarouselIndex,
   renderCarousel,
   updateBackdropForDay,
+  syncLiveWeatherForActiveDay,
   prefetchAllDaysWeather,
   prefetchAllCardPhotos,
   refreshTripTravelRoutes,
@@ -55,10 +56,13 @@ import {
 } from './trip-planner-creator.js';
 
 /**
- * Connect Cross-Module Callbacks (Prevents Circular Imports)
+ * Connect Cross-Module Callbacks (Prevents Circular Imports & Keeps Forecast Synced on Edits)
  */
 registerPlannerHooks({
-  renderAll,
+  renderAll: () => {
+    renderAll();
+    syncLiveWeatherForActiveDay();
+  },
   renderItinerary,
   openDayModal,
   confirmDeleteDay,
@@ -241,6 +245,7 @@ setInterval(updateClock, 1000);
 bindGlobalEvents();
 updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0]);
 renderAll();
+syncLiveWeatherForActiveDay();
 prefetchAllDaysWeather();
 prefetchAllCardPhotos();
 refreshTripTravelRoutes();

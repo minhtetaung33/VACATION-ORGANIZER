@@ -1,315 +1,262 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore.js";
 import {
   normalizeTripSchedules,
   computeTripTravelLegs
 } from './trip-timeline-engine.js';
 
 /**
- * Crisp Inline SVG Icon Library
+ * ============================================================================
+ * SPATIAL TRIPOS · CORE STORE, LIVE WEATHER (DAY/NIGHT) & CAROUSEL ENGINE
+ * ============================================================================
  */
-export const ICONS = {
-  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
-  chevronLeft: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="15 18 9 12 15 6"/></svg>`,
-  chevronRight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="9 18 15 12 9 6"/></svg>`,
-  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-  close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
-  arrowUp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="18 15 12 9 6 15"/></svg>`,
-  arrowDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="6 9 12 15 18 9"/></svg>`,
-  info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-  check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>`,
-  link: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
-  sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
-  cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
-  rain: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M8 19v2"/><path d="M12 19v2"/><path d="M16 19v2"/></svg>`,
-  drive: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M14 16H9m10 0h3v-3.15a1 1 0 0 0-.84-.99L16 11l-2.7-3.6a1 1 0 0 0-.8-.4H5.24a2 2 0 0 0-1.8 1.1l-.8 1.63A6 6 0 0 0 2 12.42V16h2"/><circle cx="6.5" cy="16.5" r="2.5"/><circle cx="16.5" cy="16.5" r="2.5"/></svg>`,
-  hotel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8"/><path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M12 4v6"/><path d="M2 18h20"/></svg>`,
-  food: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
-  highlight: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>`,
-  explore: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
-  stop: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-  clock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
-  pin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>`,
-  ticket: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>`,
-  mountain: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>`,
-  leaf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>`,
-  plane: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
-  globe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-  newTrip: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="9.5" y1="13.5" x2="14.5" y2="13.5"/></svg>`,
-  trips: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
-  bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
-  wallet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>`,
-  chevronDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="6 9 12 15 18 9"/></svg>`,
-  receipt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>`,
 
-  // Timeline Drag, Lock, Duplicate, Copy-to-Day, Travel, Warnings & Custom Category Icons
-  grip: `<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`,
-  lock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
-  unlock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
-  copyToDay: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M10 15h5"/><path d="m13 13 2 2-2 2"/></svg>`,
-  route: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>`,
-  walk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="13" cy="4" r="2"/><path d="m13.5 8.5-2.5 5 3.5 3 1 5.5"/><path d="m11 13.5-3 3-2 4.5"/><path d="m10 9.5 4.5-1 2.5 3"/></svg>`,
-  alert: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  calendarClock: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><circle cx="16" cy="16" r="6"/><path d="M16 14v2.2l1.6 1"/></svg>`,
-  palette: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`,
-  wand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>`,
-  camera: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
-  coffee: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>`,
-  music: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
-  heart: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>`,
-  star: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
-  umbrella: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M22 12a10.06 10.06 1 0 0-20 0Z"/><path d="M12 12v8a2 2 0 0 0 4 0"/><path d="M12 2v1"/></svg>`,
-  gift: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>`
+export const ICONS = {
+  plus: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  newTrip: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 16v5M16.5 18.5h5"/></svg>`,
+  trips: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3V7z"/><path d="M9 4v13M15 7v13"/></svg>`,
+  edit: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  trash: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  check: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  close: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`,
+  chevronLeft: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+  chevronRight: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`,
+  chevronDown: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
+  arrowUp: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>`,
+  arrowDown: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`,
+  grip: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>`,
+  lock: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  unlock: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
+  copy: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  copyToDay: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="14" height="14" rx="2"/><path d="M21 8v11a2 2 0 0 1-2 2H8"/><path d="M10 11h4M12 9v4"/></svg>`,
+  pin: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`,
+  link: `<svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
+  clock: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  calendarClock: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4M8 2v4M3 10h5"/><circle cx="17.5" cy="17.5" r="4.5"/><path d="M17.5 15.5v2l1.5 1"/></svg>`,
+  route: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>`,
+  drive: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`,
+  walk: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="m10 21 2-6 3 2v4"/><path d="m8 13 3-4 4 2 3-1"/><path d="m7 21 2-5"/></svg>`,
+  alert: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  wand: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m15 4-1 1 5 5 1-1a2.83 2.83 0 1 0-4-4Z"/><path d="m13 6-8.5 8.5a2.12 2.12 0 1 0 3 3L16 9"/><path d="M8 2v2M2 8h2M20 14v2M14 20h2"/></svg>`,
+  info: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  globe: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+  receipt: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg>`,
+  save: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  categories: `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg>`,
+  hotel: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>`,
+  food: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`,
+  sparkle: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>`,
+  explore: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>`,
+  stop: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 6.9 8 11.7z"/></svg>`,
+  camera: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
+  star: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  ticket: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg>`,
+  flight: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>`,
+  bag: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`,
+  coffee: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><line x1="6" y1="2" x2="6" y2="4"/><line x1="10" y1="2" x2="10" y2="4"/><line x1="14" y1="2" x2="14" y2="4"/></svg>`,
+  sun: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>`,
+  moon: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>`,
+  cloud: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
+  partly: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="M20 12h2"/><path d="m19.07 4.93-1.41 1.41"/><path d="M15.947 12.65a4 4 0 0 0-5.925-4.128"/><path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z"/></svg>`,
+  rain: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/></svg>`,
+  snow: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M8 15h.01"/><path d="M8 19h.01"/><path d="M12 17h.01"/><path d="M12 21h.01"/><path d="M16 15h.01"/><path d="M16 19h.01"/></svg>`,
+  storm: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973"/><path d="m13 12-3 5h4l-3 5"/></svg>`,
+  web: `<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
 };
 
 export const LINK_ICON_META = {
-  lights: { label: 'Lights & Festivals', icon: 'highlight', style: 'bg-gradient-to-br from-amber-500/25 to-orange-500/20 border-amber-400/40 text-amber-300 shadow-amber-500/15' },
-  ticket: { label: 'Tickets & Passes', icon: 'ticket', style: 'bg-gradient-to-br from-sky-500/25 to-cyan-500/20 border-sky-400/40 text-sky-300 shadow-sky-500/15' },
-  tram: { label: 'Mountain & Scenic', icon: 'mountain', style: 'bg-gradient-to-br from-indigo-500/25 to-sky-500/20 border-indigo-400/40 text-indigo-300 shadow-indigo-500/15' },
-  dining: { label: 'Dining & Food', icon: 'food', style: 'bg-gradient-to-br from-rose-500/25 to-orange-500/20 border-rose-400/40 text-rose-300 shadow-rose-500/15' },
-  museum: { label: 'Museum & Aviation', icon: 'plane', style: 'bg-gradient-to-br from-violet-500/25 to-fuchsia-500/20 border-violet-400/40 text-violet-300 shadow-violet-500/15' },
-  garden: { label: 'Zoo & Nature', icon: 'leaf', style: 'bg-gradient-to-br from-emerald-500/25 to-teal-500/20 border-emerald-400/40 text-emerald-300 shadow-emerald-500/15' },
-  hotel: { label: 'Hotel & Stays', icon: 'hotel', style: 'bg-gradient-to-br from-blue-500/25 to-indigo-500/20 border-blue-400/40 text-blue-300 shadow-blue-500/15' },
-  web: { label: 'General Website', icon: 'globe', style: 'bg-gradient-to-br from-white/15 to-sky-500/15 border-white/25 text-white/90 shadow-black/20' }
+  ticket: { label: 'Tickets & Attractions', icon: 'ticket', style: 'bg-orange-500/20 border-orange-400/35 text-orange-300' },
+  hotel: { label: 'Hotel & Stay', icon: 'hotel', style: 'bg-indigo-500/20 border-indigo-400/35 text-indigo-300' },
+  food: { label: 'Dining & Reservations', icon: 'food', style: 'bg-amber-500/20 border-amber-400/35 text-amber-300' },
+  explore: { label: 'Park & Sightseeing', icon: 'explore', style: 'bg-emerald-500/20 border-emerald-400/35 text-emerald-300' },
+  web: { label: 'Official Website', icon: 'web', style: 'bg-sky-500/20 border-sky-400/35 text-sky-300' }
 };
 
 export const CATEGORY_META = {
   drive: {
     label: 'Drive / Transit',
     icon: 'drive',
-    color: 'bg-sky-500/15 border-sky-400/35 text-sky-300',
-    ambient: 'bg-gradient-to-r from-sky-400/80 via-cyan-300/60 to-transparent',
     anim: 'cat-anim-glide',
+    color: 'bg-sky-500/20 border-sky-400/35 text-sky-300',
+    ambient: 'bg-gradient-to-r from-sky-400/70 to-transparent',
     rgb: [56, 189, 248]
   },
   hotel: {
     label: 'Hotel / Rest',
     icon: 'hotel',
-    color: 'bg-indigo-500/15 border-indigo-400/35 text-indigo-300',
-    ambient: 'bg-gradient-to-r from-indigo-400/80 via-violet-300/60 to-transparent',
     anim: 'cat-anim-float',
+    color: 'bg-indigo-500/20 border-indigo-400/35 text-indigo-300',
+    ambient: 'bg-gradient-to-r from-indigo-400/70 to-transparent',
     rgb: [129, 140, 248]
   },
   food: {
     label: 'Dining / Food',
     icon: 'food',
-    color: 'bg-amber-500/15 border-amber-400/35 text-amber-300',
-    ambient: 'bg-gradient-to-r from-amber-400/85 via-orange-300/60 to-transparent',
     anim: 'cat-anim-steam',
+    color: 'bg-amber-500/20 border-amber-400/35 text-amber-300',
+    ambient: 'bg-gradient-to-r from-amber-400/70 to-transparent',
     rgb: [251, 191, 36]
   },
   highlight: {
     label: 'Highlight Event',
-    icon: 'highlight',
-    color: 'bg-orange-500/15 border-orange-400/35 text-orange-300',
-    ambient: 'bg-gradient-to-r from-orange-400/90 via-rose-400/60 to-transparent',
+    icon: 'sparkle',
     anim: 'cat-anim-sparkle',
+    color: 'bg-orange-500/20 border-orange-400/35 text-orange-300',
+    ambient: 'bg-gradient-to-r from-orange-400/75 to-transparent',
     rgb: [251, 146, 60]
   },
   explore: {
     label: 'Explore / Sightseeing',
     icon: 'explore',
-    color: 'bg-emerald-500/15 border-emerald-400/35 text-emerald-300',
-    ambient: 'bg-gradient-to-r from-emerald-400/85 via-teal-300/60 to-transparent',
     anim: 'cat-anim-compass',
+    color: 'bg-emerald-500/20 border-emerald-400/35 text-emerald-300',
+    ambient: 'bg-gradient-to-r from-emerald-400/70 to-transparent',
     rgb: [52, 211, 153]
   },
   stop: {
     label: 'General Stop',
     icon: 'stop',
-    color: 'bg-white/10 border-white/25 text-white/85',
-    ambient: 'bg-gradient-to-r from-slate-200/70 via-sky-300/50 to-transparent',
     anim: 'cat-anim-radar',
-    rgb: [203, 213, 225]
+    color: 'bg-slate-500/20 border-slate-400/35 text-slate-300',
+    ambient: 'bg-gradient-to-r from-slate-300/60 to-transparent',
+    rgb: [148, 163, 184]
   }
 };
 
 export const CUSTOM_CATEGORY_THEMES = {
   rose: {
-    label: 'Rose Glow',
-    color: 'bg-rose-500/15 border-rose-400/35 text-rose-300',
-    ambient: 'bg-gradient-to-r from-rose-400/85 via-pink-300/60 to-transparent',
+    label: 'Rose Pink',
+    color: 'bg-rose-500/20 border-rose-400/40 text-rose-300',
+    ambient: 'bg-gradient-to-r from-rose-400/75 to-transparent',
     rgb: [251, 113, 133]
   },
-  violet: {
-    label: 'Cosmic Violet',
-    color: 'bg-violet-500/15 border-violet-400/35 text-violet-300',
-    ambient: 'bg-gradient-to-r from-violet-400/85 via-fuchsia-300/60 to-transparent',
-    rgb: [167, 139, 250]
-  },
   cyan: {
-    label: 'Ocean Cyan',
-    color: 'bg-cyan-500/15 border-cyan-400/35 text-cyan-300',
-    ambient: 'bg-gradient-to-r from-cyan-400/85 via-sky-300/60 to-transparent',
+    label: 'Electric Cyan',
+    color: 'bg-cyan-500/20 border-cyan-400/40 text-cyan-300',
+    ambient: 'bg-gradient-to-r from-cyan-400/75 to-transparent',
     rgb: [34, 211, 238]
   },
+  violet: {
+    label: 'Royal Violet',
+    color: 'bg-violet-500/20 border-violet-400/40 text-violet-300',
+    ambient: 'bg-gradient-to-r from-violet-400/75 to-transparent',
+    rgb: [167, 139, 250]
+  },
   emerald: {
-    label: 'Forest Mint',
-    color: 'bg-emerald-500/15 border-emerald-400/35 text-emerald-300',
-    ambient: 'bg-gradient-to-r from-emerald-400/85 via-lime-300/60 to-transparent',
+    label: 'Emerald Mint',
+    color: 'bg-emerald-500/20 border-emerald-400/40 text-emerald-300',
+    ambient: 'bg-gradient-to-r from-emerald-400/75 to-transparent',
     rgb: [52, 211, 153]
   },
   amber: {
-    label: 'Golden Sun',
-    color: 'bg-amber-500/15 border-amber-400/35 text-amber-300',
-    ambient: 'bg-gradient-to-r from-amber-400/85 via-yellow-300/60 to-transparent',
+    label: 'Golden Amber',
+    color: 'bg-amber-500/20 border-amber-400/40 text-amber-300',
+    ambient: 'bg-gradient-to-r from-amber-400/75 to-transparent',
     rgb: [251, 191, 36]
   },
-  fuchsia: {
-    label: 'Neon Fuchsia',
-    color: 'bg-fuchsia-500/15 border-fuchsia-400/35 text-fuchsia-300',
-    ambient: 'bg-gradient-to-r from-fuchsia-400/85 via-purple-300/60 to-transparent',
-    rgb: [232, 121, 249]
+  orange: {
+    label: 'Sunset Coral',
+    color: 'bg-orange-500/20 border-orange-400/40 text-orange-300',
+    ambient: 'bg-gradient-to-r from-orange-400/75 to-transparent',
+    rgb: [251, 146, 60]
   }
 };
 
 export const CUSTOM_CATEGORY_ICON_OPTIONS = [
   { key: 'camera', label: 'Photo Spot' },
-  { key: 'coffee', label: 'Coffee / Cafe' },
+  { key: 'coffee', label: 'Coffee & Cafe' },
+  { key: 'ticket', label: 'Tickets & Show' },
   { key: 'bag', label: 'Shopping' },
-  { key: 'ticket', label: 'Show / Ticket' },
-  { key: 'mountain', label: 'Hike / Nature' },
-  { key: 'umbrella', label: 'Beach / Relax' },
-  { key: 'music', label: 'Music / Nightlife' },
-  { key: 'heart', label: 'Family / Date' },
-  { key: 'star', label: 'Must-See' },
-  { key: 'gift', label: 'Holiday / Special' },
-  { key: 'plane', label: 'Flight / Airport' },
-  { key: 'leaf', label: 'Park / Garden' }
+  { key: 'flight', label: 'Flight & Airport' },
+  { key: 'star', label: 'Must-Do' },
+  { key: 'sparkle', label: 'Magic / VIP' },
+  { key: 'sun', label: 'Outdoor / Beach' },
+  { key: 'food', label: 'Snack / Treat' },
+  { key: 'drive', label: 'Road / Parking' },
+  { key: 'hotel', label: 'Lounge / Spa' },
+  { key: 'explore', label: 'Trail / Adventure' }
 ];
 
 export const CUSTOM_CATEGORY_ANIM_OPTIONS = [
-  { key: 'cat-anim-sparkle', label: 'Starlight Sparkle' },
-  { key: 'cat-anim-glide', label: 'Highway Glide' },
-  { key: 'cat-anim-steam', label: 'Warm Steam Glow' },
+  { key: 'cat-anim-sparkle', label: 'Sparkle & Glow' },
+  { key: 'cat-anim-bounce', label: 'Gentle Bounce' },
+  { key: 'cat-anim-float', label: 'Smooth Float' },
+  { key: 'cat-anim-radar', label: 'Radar Pulse' },
   { key: 'cat-anim-compass', label: 'Compass Sway' },
-  { key: 'cat-anim-float', label: 'Gentle Float' },
-  { key: 'cat-anim-radar', label: 'Radar Ripple' },
-  { key: 'cat-anim-bounce', label: 'Adventure Hop' },
-  { key: 'cat-anim-spin', label: 'Cosmic Orbit' }
+  { key: 'cat-anim-steam', label: 'Warm Shimmer' },
+  { key: 'cat-anim-glide', label: 'Motion Glide' },
+  { key: 'cat-anim-spin', label: 'Slow Orbit' }
 ];
 
 export const BUDGET_CATEGORY_META = {
   hotel: {
-    label: 'Hotels & Lodging',
-    defaultName: 'Hotels & Lodging',
-    placeholder: 'e.g. Riverside Hotel, Palm Desert Resort',
+    label: 'Hotel & Stays',
+    defaultName: 'Hotels',
     icon: 'hotel',
-    style: 'bg-gradient-to-br from-indigo-500/25 to-blue-500/20 border-indigo-400/40 text-indigo-300 shadow-indigo-500/15'
+    style: 'bg-indigo-500/20 border-indigo-400/35 text-indigo-300',
+    placeholder: 'e.g. Riverside Hotel (1 night)'
   },
   food: {
-    label: 'Food & Dining',
-    defaultName: 'Food & Dining',
-    placeholder: "e.g. Peaks Dinner, Sherman's Deli",
+    label: 'Dining & Meals',
+    defaultName: 'Dining & Restaurants',
     icon: 'food',
-    style: 'bg-gradient-to-br from-amber-500/25 to-orange-500/20 border-amber-400/40 text-amber-300 shadow-amber-500/15'
+    style: 'bg-amber-500/20 border-amber-400/35 text-amber-300',
+    placeholder: "e.g. Sherman's Deli lunch"
   },
-  transport: {
-    label: 'Gas / Parking / Transit',
-    defaultName: 'Gas / Parking',
-    placeholder: 'e.g. Fuel refill, Mission Inn Parking',
-    icon: 'drive',
-    style: 'bg-gradient-to-br from-sky-500/25 to-cyan-500/20 border-sky-400/40 text-sky-300 shadow-sky-500/15'
-  },
-  tickets: {
-    label: 'Tickets & Activities',
-    defaultName: 'Tickets / Activities',
-    placeholder: 'e.g. WildLights Bundle, Aerial Tramway',
+  ticket: {
+    label: 'Tickets & Attractions',
+    defaultName: 'Attractions & Tickets',
     icon: 'ticket',
-    style: 'bg-gradient-to-br from-orange-500/25 to-rose-500/20 border-orange-400/40 text-orange-300 shadow-orange-500/15'
+    style: 'bg-orange-500/20 border-orange-400/35 text-orange-300',
+    placeholder: 'e.g. Aerial Tramway passes'
   },
-  flights: {
-    label: 'Flights & Airfare',
-    defaultName: 'Flights & Airfare',
-    placeholder: 'e.g. Round-trip tickets, Checked bags',
-    icon: 'plane',
-    style: 'bg-gradient-to-br from-violet-500/25 to-fuchsia-500/20 border-violet-400/40 text-violet-300 shadow-violet-500/15'
+  drive: {
+    label: 'Gas, Flights & Transit',
+    defaultName: 'Gas & Transit',
+    icon: 'drive',
+    style: 'bg-sky-500/20 border-sky-400/35 text-sky-300',
+    placeholder: 'e.g. Fuel fill-up + valet parking'
   },
-  shopping: {
+  bag: {
     label: 'Shopping & Souvenirs',
-    defaultName: 'Shopping & Souvenirs',
-    placeholder: 'e.g. Gift shop, Holiday ornaments',
+    defaultName: 'Shopping & Gifts',
     icon: 'bag',
-    style: 'bg-gradient-to-br from-pink-500/25 to-rose-500/20 border-pink-400/40 text-pink-300 shadow-pink-500/15'
-  },
-  other: {
-    label: 'Essentials & Misc',
-    defaultName: 'Essentials & Misc',
-    placeholder: 'e.g. Snacks, Travel supplies, Tips',
-    icon: 'wallet',
-    style: 'bg-gradient-to-br from-emerald-500/25 to-teal-500/20 border-emerald-400/40 text-emerald-300 shadow-emerald-500/15'
+    style: 'bg-emerald-500/20 border-emerald-400/35 text-emerald-300',
+    placeholder: 'e.g. Holiday market gifts'
   },
   custom: {
     label: 'Custom Expense',
     defaultName: '',
-    placeholder: 'e.g. Item or vendor description',
-    icon: 'highlight',
-    style: 'bg-gradient-to-br from-orange-400/25 to-sky-400/25 border-white/30 text-sky-200 shadow-sky-500/15'
+    icon: 'star',
+    style: 'bg-rose-500/20 border-rose-400/35 text-rose-300',
+    placeholder: 'e.g. Receipt or booking item'
   }
 };
 
-/**
- * Distinct Real High-Resolution Photography for 3D Parallax Carousel Cards
- * (Guaranteed to be visually different from the main page backdrop photos)
- */
-export const REAL_CARD_BACKDROPS = {
-  lights: 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1200&q=85',
-  desert: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1200&q=85',
-  tram: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=85',
-  ps_tramway: 'https://images.unsplash.com/photo-1551524559-8af4e6624178?auto=format&fit=crop&w=1200&q=85',
-  xmas_lights: 'https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&w=1200&q=85',
-  xmas_village: 'https://images.unsplash.com/photo-1544273677-c433136021d4?auto=format&fit=crop&w=1200&q=85',
-  farm: 'https://images.unsplash.com/photo-1511497584788-876760111969?auto=format&fit=crop&w=1200&q=85',
-  beach: 'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=1200&q=85',
-  canyon: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=85',
-  city: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1200&q=85',
-  lake: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85',
-  meadow: 'https://images.unsplash.com/photo-1472214103451-9374bd1c7985?auto=format&fit=crop&w=1200&q=85',
-  autumn: 'https://images.unsplash.com/photo-1476820865390-c52aeebb9891?auto=format&fit=crop&w=1200&q=85'
-};
-
-/**
- * Curated Real High-Resolution Landscape / Forest / Travel Photography for Main Page Backdrop
- */
 export const REAL_THEME_BACKDROPS = {
   lights: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=1920&q=85',
+  xmas_lights: 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1920&q=85',
+  xmas_village: 'https://images.unsplash.com/photo-1512389142860-9c449e58a543?auto=format&fit=crop&w=1920&q=85',
   desert: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1920&q=85',
+  ps_tramway: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=85',
   tram: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=85',
-  ps_tramway: 'https://images.unsplash.com/photo-1454496522488-7a8e488e8606?auto=format&fit=crop&w=1920&q=85',
-  xmas_lights: 'https://images.unsplash.com/photo-1482517967863-00e15c9b44be?auto=format&fit=crop&w=1920&q=85',
-  xmas_village: 'https://images.unsplash.com/photo-1513297887119-d46091b24bfa?auto=format&fit=crop&w=1920&q=85',
   farm: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1920&q=85',
   beach: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=85',
-  canyon: 'https://images.unsplash.com/photo-1474044159687-1ee9f3a51722?auto=format&fit=crop&w=1920&q=85',
-  city: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1920&q=85',
+  canyon: 'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=1920&q=85',
+  city: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1920&q=85',
   lake: 'https://images.unsplash.com/photo-1439066615861-d1af74d74000?auto=format&fit=crop&w=1920&q=85',
-  meadow: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1920&q=85',
-  autumn: 'https://images.unsplash.com/photo-1507041957456-9c397ce39c97?auto=format&fit=crop&w=1920&q=85'
+  meadow: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1920&q=85',
+  autumn: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=1920&q=85'
 };
 
-/**
- * Callback Registry (Connected by main.js to keep module imports one-way)
- */
-export const plannerHooks = {
-  renderAll: () => {},
-  renderItinerary: () => {},
-  openDayModal: () => {},
-  confirmDeleteDay: () => {},
-  openEventModal: () => {}
-};
-
-export function registerPlannerHooks(overrides = {}) {
-  Object.assign(plannerHooks, overrides);
-}
+export const REAL_CARD_BACKDROPS = { ...REAL_THEME_BACKDROPS };
 
 /**
- * Utilities: ID generator, HTML Escaping, Category Resolution, Budget & Maps Helpers
+ * ============================================================================
+ * GENERAL UTILITIES
+ * ============================================================================
  */
+
 export function uid(prefix = 'id') {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  return `${prefix}_${Math.random().toString(36).slice(2, 8)}_${Date.now().toString(36).slice(-4)}`;
 }
 
 export function esc(str) {
@@ -323,17 +270,15 @@ export function esc(str) {
 
 export function getAllCategories() {
   const merged = { ...CATEGORY_META };
-  const customs = Array.isArray(appStore.state?.customCategories) ? appStore.state.customCategories : [];
-  customs.forEach((cat) => {
-    if (!cat?.id) return;
-    const theme = CUSTOM_CATEGORY_THEMES[cat.theme] || CUSTOM_CATEGORY_THEMES.cyan;
-    merged[cat.id] = {
-      id: cat.id,
-      label: cat.label || 'Custom',
-      icon: ICONS[cat.icon] ? cat.icon : 'star',
+  const customs = appStore?.state?.customCategories || [];
+  customs.forEach((c) => {
+    const theme = CUSTOM_CATEGORY_THEMES[c.theme] || CUSTOM_CATEGORY_THEMES.cyan;
+    merged[c.id] = {
+      label: c.label,
+      icon: c.icon || 'star',
+      anim: c.anim || 'cat-anim-sparkle',
       color: theme.color,
       ambient: theme.ambient,
-      anim: cat.anim || 'cat-anim-sparkle',
       rgb: theme.rgb,
       isCustom: true
     };
@@ -341,145 +286,145 @@ export function getAllCategories() {
   return merged;
 }
 
-export function getCategoryMeta(categoryKey) {
+export function getCategoryMeta(catKey) {
   const all = getAllCategories();
-  return all[categoryKey] || CATEGORY_META.stop;
+  return all[catKey] || CATEGORY_META.stop;
 }
 
-export function getStopMapUrl(locationStr) {
-  const trimmed = String(locationStr || '').trim();
-  if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmed)}`;
+export function getStopMapUrl(location) {
+  const loc = String(location || '').trim();
+  if (!loc) return '';
+  if (/^https?:\/\//i.test(loc)) return loc;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc)}`;
 }
 
-export function getStopLocationLabel(locationStr) {
-  const trimmed = String(locationStr || '').trim();
-  if (/^https?:\/\//i.test(trimmed)) return 'Open in Maps';
-  return trimmed;
+export function getStopLocationLabel(location) {
+  const loc = String(location || '').trim();
+  if (!loc) return '';
+  if (/^https?:\/\//i.test(loc)) {
+    try {
+      const u = new URL(loc);
+      const q = u.searchParams.get('query') || u.searchParams.get('q');
+      if (q) return decodeURIComponent(q);
+    } catch (e) {
+      // Fall back to clean hostname
+    }
+    return 'Open in Google Maps';
+  }
+  return loc;
 }
 
 export function inferBudgetCategory(item) {
   if (item?.category && BUDGET_CATEGORY_META[item.category]) return item.category;
   const lbl = String(item?.label || '').toLowerCase();
-  if (/hotel|stay|resort|lodg|airbnb|motel|room|night/.test(lbl)) return 'hotel';
-  if (/food|din|meal|lunch|dinner|breakfast|snack|coffee|restaurant/.test(lbl)) return 'food';
-  if (/gas|park|fuel|car|drive|uber|lyft|transit|toll|rental/.test(lbl)) return 'transport';
-  if (/ticket|activit|zoo|tram|museum|pass|tour|farm|entry|show/.test(lbl)) return 'tickets';
-  if (/flight|air|plane|baggage|airport/.test(lbl)) return 'flights';
-  if (/shop|souvenir|gift|merch|clothes/.test(lbl)) return 'shopping';
-  if (/misc|other|essential|tip|supply/.test(lbl)) return 'other';
+  if (/hotel|stay|resort|airbnb|night|lodging/.test(lbl)) return 'hotel';
+  if (/food|dining|meal|restaurant|lunch|dinner|breakfast|coffee/.test(lbl)) return 'food';
+  if (/ticket|pass|museum|tram|park|admission|tour/.test(lbl)) return 'ticket';
+  if (/gas|fuel|flight|car|rental|uber|parking|transit/.test(lbl)) return 'drive';
+  if (/shop|gift|souvenir|bag/.test(lbl)) return 'bag';
   return 'custom';
 }
 
 export function getItemFinalCost(item) {
-  if (Array.isArray(item?.finalEntries) && item.finalEntries.length > 0) {
-    return item.finalEntries.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0);
+  if (!item) return null;
+  if (Array.isArray(item.finalEntries) && item.finalEntries.length > 0) {
+    return item.finalEntries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   }
-  if (item?.final !== null && item?.final !== '' && item?.final !== undefined && !Number.isNaN(Number(item.final))) {
-    return Number(item.final);
-  }
-  return null;
+  if (item.final === null || item.final === undefined || item.final === '') return null;
+  const n = Number(item.final);
+  return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Toast, Clipboard, Reusable Frosted Glass Modal & Delete Confirmation
- */
 export function showToast(message, type = 'success') {
   const container = document.getElementById('toastContainer');
   if (!container) return;
-  const toast = document.createElement('div');
-  const colors = type === 'error'
-    ? 'bg-rose-600/90 border-rose-400/40 text-white'
-    : 'bg-[#191b22]/90 border-white/20 text-white';
-  toast.className = `pointer-events-auto max-w-full px-4 py-2.5 rounded-2xl border backdrop-blur-xl shadow-2xl text-xs sm:text-sm font-medium animate-popIn ${colors}`;
-  toast.textContent = message;
-  container.appendChild(toast);
+  const el = document.createElement('div');
+  const borderTone = type === 'error'
+    ? 'border-rose-400/50 bg-rose-950/90 text-rose-100'
+    : 'border-white/20 bg-[#161923]/92 text-white';
+  el.className = `pointer-events-auto inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border backdrop-blur-2xl shadow-2xl text-xs font-semibold animate-popIn ${borderTone}`;
+  el.innerHTML = `<span class="${type === 'error' ? 'text-rose-300' : 'text-emerald-300'}">${type === 'error' ? ICONS.alert : ICONS.check}</span><span>${esc(message)}</span>`;
+  container.appendChild(el);
   setTimeout(() => {
-    toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(8px)';
-    setTimeout(() => toast.remove(), 320);
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(6px)';
+    el.style.transition = 'all 220ms ease';
+    setTimeout(() => el.remove(), 240);
   }, 2600);
 }
 
-export function copyTextToClipboard(text, successMsg = 'Copied!') {
+export async function copyTextToClipboard(text, successMsg = 'Copied!') {
   try {
+    await navigator.clipboard.writeText(text);
+    showToast(successMsg);
+  } catch (err) {
     const ta = document.createElement('textarea');
     ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
     document.body.appendChild(ta);
     ta.select();
     document.execCommand('copy');
     ta.remove();
     showToast(successMsg);
-  } catch (err) {
-    showToast('Unable to copy text', 'error');
   }
+}
+
+/**
+ * ============================================================================
+ * MODAL ENGINE
+ * ============================================================================
+ */
+
+export function closeModal() {
+  const overlay = document.getElementById('modalOverlay');
+  if (!overlay) return;
+  overlay.classList.add('hidden');
+  overlay.classList.remove('flex');
 }
 
 export function openModal({ title, bodyHtml, footerButtons = [] }) {
   const overlay = document.getElementById('modalOverlay');
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalBody').innerHTML = bodyHtml;
-  const footer = document.getElementById('modalFooter');
-  footer.innerHTML = '';
+  const titleEl = document.getElementById('modalTitle');
+  const bodyEl = document.getElementById('modalBody');
+  const footerEl = document.getElementById('modalFooter');
+  if (!overlay || !titleEl || !bodyEl || !footerEl) return;
 
-  footerButtons.forEach((btn) => {
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.textContent = btn.label;
-    if (btn.id) el.id = btn.id;
-    if (btn.variant === 'primary') {
-      el.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white shadow-lg transition-all cursor-pointer';
-    } else if (btn.variant === 'danger') {
-      el.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg transition-all cursor-pointer';
-    } else {
-      el.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-medium bg-white/10 hover:bg-white/20 text-white/90 transition-all cursor-pointer';
-    }
-    el.addEventListener('click', btn.onClick);
-    footer.appendChild(el);
+  titleEl.textContent = title || '';
+  bodyEl.innerHTML = bodyHtml || '';
+  footerEl.innerHTML = '';
+
+  footerButtons.forEach((btnCfg) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    if (btnCfg.id) btn.id = btnCfg.id;
+    btn.textContent = btnCfg.label || 'OK';
+    btn.className = btnCfg.variant === 'danger'
+      ? 'px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs sm:text-sm font-semibold shadow-lg transition-all cursor-pointer'
+      : btnCfg.variant === 'primary'
+        ? 'px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-sky-500 hover:from-orange-400 hover:to-sky-400 text-white text-xs sm:text-sm font-semibold shadow-lg transition-all cursor-pointer'
+        : 'px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/90 text-xs sm:text-sm font-medium transition-all cursor-pointer';
+    btn.addEventListener('click', () => {
+      if (typeof btnCfg.onClick === 'function') btnCfg.onClick();
+    });
+    footerEl.appendChild(btn);
   });
 
   overlay.classList.remove('hidden');
   overlay.classList.add('flex');
-  document.body.style.overflow = 'hidden';
 }
 
-export function closeModal() {
-  const overlay = document.getElementById('modalOverlay');
-  overlay.classList.add('hidden');
-  overlay.classList.remove('flex');
-  document.body.style.overflow = '';
-}
-
-export function openConfirmDeleteModal({
-  title = 'Confirm Delete',
-  itemName = '',
-  detail = 'This action cannot be undone.',
-  confirmLabel = 'Yes, Delete',
-  onConfirm
-}) {
+export function openConfirmDeleteModal({ title, itemName, detail, confirmLabel = 'Yes, Delete', onConfirm }) {
   openModal({
-    title,
+    title: title || 'Confirm Delete',
     bodyHtml: `
-      <div class="py-3 text-center space-y-4">
-        <div class="relative mx-auto w-16 h-16 flex items-center justify-center">
-          <span class="absolute inset-0 rounded-full bg-rose-500/25 animate-ping"></span>
-          <span class="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500/25 to-orange-500/20 border border-rose-400/40 flex items-center justify-center text-rose-300 shadow-lg shadow-rose-950/50 scale-110">
-            ${ICONS.trash}
-          </span>
-        </div>
-        <div class="space-y-1.5">
-          <h4 class="text-base sm:text-lg font-semibold text-white">Are you sure?</h4>
-          ${itemName ? `<div class="inline-block max-w-full px-3 py-1 rounded-xl bg-white/8 border border-white/12 text-xs sm:text-sm font-medium text-orange-200 truncate">"${esc(itemName)}"</div>` : ''}
-          <p class="text-xs sm:text-sm text-white/65 leading-relaxed max-w-sm mx-auto">${esc(detail)}</p>
+      <div class="space-y-3">
+        <div class="rounded-2xl bg-rose-500/12 border border-rose-400/35 p-3.5">
+          <div class="text-xs font-bold text-rose-200">${esc(itemName)}</div>
+          <p class="text-xs text-white/75 mt-1 leading-relaxed">${esc(detail || 'This action cannot be undone.')}</p>
         </div>
       </div>
     `,
     footerButtons: [
-      { label: 'No, Keep It', onClick: closeModal },
+      { label: 'Cancel', onClick: closeModal },
       {
         label: confirmLabel,
         variant: 'danger',
@@ -493,257 +438,352 @@ export function openConfirmDeleteModal({
 }
 
 /**
- * Initial Thanksgiving Getaway Planner State (With Time Slots & Reservations Ready)
+ * ============================================================================
+ * DEFAULT TRIP STATE & MULTI-TRIP STORE
+ * ============================================================================
  */
+
 export function createInitialState() {
   const trip = {
     id: 'trip-thanksgiving-default',
-    createdAt: Date.now(),
-    customCategories: [],
     meta: {
       title: 'Welcome to your Thanksgiving Getaway',
-      subtitle: 'Four days, three nights, three holiday experiences, and a full Palm Springs family day. Keep your schedule, checklist, notes, and estimated costs together.',
+      subtitle: 'Four days, three nights, three holiday experiences, and a full Palm Springs family day.',
       tripLength: '4 days / 3 nights',
       firstDeparture: 'Friday · 4:00 PM',
-      hotelPlan: '1 + 2 nights'
+      hotelPlan: '3 nights'
     },
+    customCategories: [],
     days: [
       {
-        id: 'day-1',
+        id: 'day_1',
         shortDay: 'FRI',
         shortDate: 'Nov 27',
         temp: '68°F',
-        location: 'Riverside',
-        landmark: 'Mission Inn Hotel Riverside California',
-        cardLandmark: 'Mission Inn Festival of Lights Riverside',
-        scene: 'lights',
+        location: 'Riverside, CA',
+        landmark: 'The Mission Inn Festival of Lights',
+        cardLandmark: 'Mission Inn Riverside holiday lights',
+        scene: 'xmas_lights',
         useScenePreset: true,
-        customBgUrl: '',
-        customCardUrl: '',
         title: 'Day 1 · Friday, Nov 27',
-        subtitle: 'Riverside · Check in first, then Festival of Lights',
+        subtitle: 'Riverside Arrival & Festival of Lights',
         tag: 'Hotel: Riverside',
-        noteTitle: 'Parking',
-        noteBody: "Mission Inn's visitor information lists public parking options, including advance parking. Reserve parking ahead if possible. Festival hours are 5–11 PM; it is closed Thanksgiving Day and Christmas Day.",
+        noteTitle: 'Evening Tip',
+        noteBody: 'Arrive downtown before 7:15 PM for easier garage parking near Market St & Mission Inn Ave.',
         events: [
-          { id: 'e1-1', time: '4:00–5:30 PM', startMinutes: 16 * 60, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Leave home (West Covina / La Puente area). Allow extra time for holiday traffic.', location: 'West Covina, CA' },
-          { id: 'e1-2', time: '5:30–6:00 PM', startMinutes: 17 * 60 + 30, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Arrive at Riverside hotel, check in, unload luggage, and rest.', location: 'Downtown Riverside, CA' },
-          { id: 'e1-3', time: '6:15–7:00 PM', startMinutes: 18 * 60 + 15, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: 'Dinner near downtown Riverside.', location: 'Main St Pedestrian Mall, Riverside, CA' },
-          { id: 'e1-4', time: '7:15–9:15 PM', startMinutes: 19 * 60 + 15, durationMinutes: 120, isFixed: false, reservationMinutes: null, completed: false, category: 'highlight', text: 'Visit Mission Inn Festival of Lights. Enjoy the decorations and downtown atmosphere.', location: 'The Mission Inn Hotel & Spa, Riverside, CA' },
-          { id: 'e1-5', time: '9:15–9:45 PM', startMinutes: 21 * 60 + 15, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Walk or drive back to the hotel and get some rest.', location: 'Downtown Riverside, CA' }
+          {
+            id: 'ev_1_1',
+            time: '4:00 PM',
+            startMinutes: 16 * 60,
+            durationMinutes: 0,
+            reservationMinutes: null,
+            isFixed: true,
+            completed: false,
+            category: 'drive',
+            location: 'West Covina, CA',
+            text: 'Leave home and head east on I-10 toward Downtown Riverside.'
+          },
+          {
+            id: 'ev_1_2',
+            time: '5:00–5:45 PM',
+            startMinutes: 17 * 60,
+            durationMinutes: 45,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'hotel',
+            location: '3649 Mission Inn Avenue, Riverside, CA 92501',
+            text: 'Check in at Riverside hotel, unpack, and rest before evening festivities.'
+          },
+          {
+            id: 'ev_1_3',
+            time: '6:00–7:15 PM',
+            startMinutes: 18 * 60,
+            durationMinutes: 75,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'food',
+            location: '3649 Mission Inn Avenue, Riverside, CA 92501',
+            text: 'Family dinner near Main Street Pedestrian Mall.'
+          },
+          {
+            id: 'ev_1_4',
+            time: '7:30–9:00 PM',
+            startMinutes: 19 * 60 + 30,
+            durationMinutes: 90,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'highlight',
+            location: '3649 Mission Inn Avenue, Riverside, CA 92501',
+            text: 'Walk through the Mission Inn Festival of Lights & Main St holiday market.'
+          }
         ]
       },
       {
-        id: 'day-2',
+        id: 'day_2',
         shortDay: 'SAT',
         shortDate: 'Nov 28',
         temp: '74°F',
-        location: 'Palm Desert',
-        landmark: 'Coachella Valley Palm Desert California',
-        cardLandmark: 'The Living Desert Zoo Palm Desert',
+        location: 'Palm Desert, CA',
+        landmark: 'The Living Desert Zoo and Gardens',
+        cardLandmark: 'Palm Desert oasis palm trees',
         scene: 'desert',
-        useScenePreset: false,
-        customBgUrl: '',
-        customCardUrl: '',
+        useScenePreset: true,
         title: 'Day 2 · Saturday, Nov 28',
-        subtitle: 'Palm Desert · The Living Desert by day and night',
+        subtitle: 'Desert Wildlife & WildLights Evening',
         tag: 'Hotel: Palm Desert',
-        noteTitle: 'Ticket reminder',
-        noteBody: 'The official Day + Night bundle is listed at $64.95 per adult and $49.95 per child ages 3–17. Under age 3 is free. Daytime guests must exit by 5 PM; WildLights entry starts at 6 PM. Check the date-specific ticket page before buying.',
+        noteTitle: 'Zoo Tip',
+        noteBody: 'Feed the giraffes early in the morning before afternoon crowds arrive.',
         events: [
-          { id: 'e2-1', time: '8:30–9:30 AM', startMinutes: 8 * 60 + 30, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: 'Breakfast, pack, and prepare for hotel checkout.', location: 'Downtown Riverside, CA' },
-          { id: 'e2-2', time: '10:30 AM–12:00 PM', startMinutes: 10 * 60 + 30, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Check out of Riverside hotel. Drive to Palm Desert.', location: 'Palm Desert, CA' },
-          { id: 'e2-3', time: '12:15–12:45 PM', startMinutes: 12 * 60 + 15, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Arrive at Palm Desert hotel. Ask about early check-in or luggage storage. Keep valuables with you.', location: 'Palm Desert, CA' },
-          { id: 'e2-4', time: '12:45–1:30 PM', startMinutes: 12 * 60 + 45, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: 'Lunch near the hotel or at the zoo, depending on timing.', location: '' },
-          { id: 'e2-5', time: '1:30–4:45 PM', startMinutes: 13 * 60 + 30, durationMinutes: 195, isFixed: false, reservationMinutes: null, completed: false, category: 'explore', text: 'Explore The Living Desert Zoo and Gardens. Prioritize the animals and exhibits your family wants to see.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
-          { id: 'e2-6', time: '5:00–5:15 PM', startMinutes: 17 * 60, durationMinutes: 15, isFixed: true, reservationMinutes: 17 * 60, completed: false, category: 'stop', text: 'Everyone must exit the zoo for the daytime break.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
-          { id: 'e2-7', time: '5:15–5:45 PM', startMinutes: 17 * 60 + 15, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Hotel check-in / rest / change clothes. Choose a hotel close to the zoo.', location: 'Palm Desert, CA' },
-          { id: 'e2-8', time: '6:00–8:15 PM', startMinutes: 18 * 60, durationMinutes: 135, isFixed: true, reservationMinutes: 18 * 60, completed: false, category: 'highlight', text: 'Return for WildLights. Last admission is 8:30 PM; event ends at 9:00 PM.', location: 'The Living Desert Zoo and Gardens, Palm Desert, CA' },
-          { id: 'e2-9', time: '8:30–9:00 PM', startMinutes: 20 * 60 + 30, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Return to hotel. Stay in the same Palm Desert hotel Saturday and Sunday nights.', location: 'Palm Desert, CA' }
+          {
+            id: 'ev_2_1',
+            time: '9:00–10:15 AM',
+            startMinutes: 9 * 60,
+            durationMinutes: 75,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'drive',
+            location: '47900 Portola Ave, Palm Desert, CA 92260',
+            text: 'Scenic drive east into the Coachella Valley toward Palm Desert.'
+          },
+          {
+            id: 'ev_2_2',
+            time: '10:30 AM–2:30 PM',
+            startMinutes: 10 * 60 + 30,
+            durationMinutes: 240,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'explore',
+            location: '47900 Portola Ave, Palm Desert, CA 92260',
+            text: 'Explore The Living Desert Zoo & Gardens — African Safari & desert trails.'
+          },
+          {
+            id: 'ev_2_3',
+            time: '6:00–8:30 PM',
+            startMinutes: 18 * 60,
+            durationMinutes: 150,
+            reservationMinutes: 18 * 60,
+            isFixed: true,
+            completed: false,
+            category: 'highlight',
+            location: '47900 Portola Ave, Palm Desert, CA 92260',
+            text: 'Return for WildLights glowing lantern tunnels & holiday train display.'
+          }
         ]
       },
       {
-        id: 'day-3',
+        id: 'day_3',
         shortDay: 'SUN',
         shortDate: 'Nov 29',
         temp: '71°F',
-        location: 'Palm Springs',
-        landmark: 'Palm Springs Aerial Tramway Mount San Jacinto',
-        cardLandmark: 'Palm Springs California mountains',
-        scene: 'tram',
-        useScenePreset: false,
-        customBgUrl: '',
-        customCardUrl: '',
+        location: 'Palm Springs, CA',
+        landmark: 'Palm Springs Aerial Tramway',
+        cardLandmark: 'Palm Springs Aerial Tramway mountains',
+        scene: 'ps_tramway',
+        useScenePreset: true,
         title: 'Day 3 · Sunday, Nov 29',
-        subtitle: 'Palm Springs · Museum, lunch, garden, tram, and dinner',
-        tag: 'Hotel: Palm Desert',
-        noteTitle: 'Mountain reminder',
-        noteBody: 'The Mountain Station is 8,516 ft high and can be 30–40°F colder than the desert floor. Snow is possible in November, but it is not guaranteed. Bring warm layers for everyone, especially the baby. Check the Tram Cam and forecast a day or two before.',
+        subtitle: 'Palm Springs Museums & Mountain Peaks',
+        tag: 'Hotel: Palm Springs',
+        noteTitle: 'Weather Note',
+        noteBody: 'Mountain Station at 8,516 ft is usually 25–30°F cooler than the desert floor — bring warm jackets.',
         events: [
-          { id: 'e3-1', time: '9:00–9:45 AM', startMinutes: 9 * 60, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Breakfast and drive to Palm Springs.', location: 'Palm Desert, CA' },
-          { id: 'e3-2', time: '10:00 AM–12:00 PM', startMinutes: 10 * 60, durationMinutes: 120, isFixed: false, reservationMinutes: null, completed: false, category: 'explore', text: 'Visit Palm Springs Air Museum (open daily 10 AM–5 PM; admission applies).', location: 'Palm Springs Air Museum, Palm Springs, CA' },
-          { id: 'e3-3', time: '12:15–1:15 PM', startMinutes: 12 * 60 + 15, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: "Lunch in Palm Springs. A downtown family-friendly option is Sherman's Deli & Bakery; another is Elmer's Restaurant.", location: "Sherman's Deli & Bakery, Palm Springs, CA" },
-          { id: 'e3-4', time: '1:30–2:45 PM', startMinutes: 13 * 60 + 30, durationMinutes: 75, isFixed: false, reservationMinutes: null, completed: false, category: 'explore', text: 'Visit Moorten Botanical Garden (season hours 10 AM–4 PM, closed Wednesday).', location: 'Moorten Botanical Garden, Palm Springs, CA' },
-          { id: 'e3-5', time: '3:00–3:45 PM', startMinutes: 15 * 60, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Drive to the Tramway Valley Station, park, use restrooms, and get warm layers ready.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
-          { id: 'e3-6', time: '3:45–4:30 PM', startMinutes: 15 * 60 + 45, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'highlight', text: 'Ride the Palm Springs Aerial Tramway up. Aim for daylight views and sunset from the Mountain Station.', location: 'Palm Springs Aerial Tramway, Palm Springs, CA' },
-          { id: 'e3-7', time: '5:15–6:45 PM', startMinutes: 17 * 60 + 15, durationMinutes: 90, isFixed: true, reservationMinutes: 17 * 60 + 15, completed: false, category: 'food', text: 'Dinner at Peaks Restaurant at the top. Reserve a table in advance; dinner seating is listed from 5 PM to 7:45 PM.', location: 'Peaks Restaurant, Palm Springs, CA' },
-          { id: 'e3-8', time: '6:45–8:15 PM', startMinutes: 18 * 60 + 45, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'explore', text: 'Enjoy the night views, observation decks, and indoor areas. Take the tram down with plenty of time before the 9:30 PM last car.', location: '' },
-          { id: 'e3-9', time: '8:30–9:15 PM', startMinutes: 20 * 60 + 30, durationMinutes: 45, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: 'Return to Palm Desert hotel.', location: 'Palm Desert, CA' }
+          {
+            id: 'ev_3_1',
+            time: '10:00–11:45 AM',
+            startMinutes: 10 * 60,
+            durationMinutes: 105,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'explore',
+            location: '745 N Gene Autry Trail, Palm Springs, CA 92262',
+            text: 'Visit the Palm Springs Air Museum & walk inside historic aircraft.'
+          },
+          {
+            id: 'ev_3_2',
+            time: '12:15–1:30 PM',
+            startMinutes: 12 * 60 + 15,
+            durationMinutes: 75,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'food',
+            location: "401 E Tahquitz Canyon Way, Palm Springs, CA 92262",
+            text: "Lunch at Sherman's Deli & Bakery in downtown Palm Springs."
+          },
+          {
+            id: 'ev_3_3',
+            time: '3:00–6:30 PM',
+            startMinutes: 15 * 60,
+            durationMinutes: 210,
+            reservationMinutes: 15 * 60,
+            isFixed: true,
+            completed: false,
+            category: 'highlight',
+            location: '1 Tram Way, Palm Springs, CA 92262',
+            text: 'Ride the rotating Palm Springs Aerial Tramway up Chino Canyon for sunset.'
+          }
         ]
       },
       {
-        id: 'day-4',
+        id: 'day_4',
         shortDay: 'MON',
         shortDate: 'Nov 30',
-        temp: '69°F',
-        location: 'Cherry Valley',
-        landmark: 'San Bernardino National Forest California',
-        cardLandmark: 'Pine Forest Christmas Lights Cherry Valley',
-        scene: 'farm',
+        temp: '66°F',
+        location: 'Cherry Valley, CA',
+        landmark: '123 Farm Lavender & Christmas Nights',
+        cardLandmark: 'Cherry Valley Christmas lights farm',
+        scene: 'xmas_village',
         useScenePreset: true,
-        customBgUrl: '',
-        customCardUrl: '',
         title: 'Day 4 · Monday, Nov 30',
-        subtitle: 'Cherry Valley · 123 Farm Christmas Nights · Home',
-        tag: 'Check out',
-        noteTitle: 'Monday detail',
-        noteBody: "Santa's Workshop is not listed for Nov 30. Weekday Christmas Nights admission is listed from 5–10 PM. Buy date-specific tickets ahead; gate tickets may not be available.",
+        subtitle: '123 Farm Christmas Nights & Drive Home',
+        tag: 'Return Home',
+        noteTitle: 'Return Tip',
+        noteBody: 'Grab warm lavender hot cocoa at 123 Farm before heading back on I-10 West.',
         events: [
-          { id: 'e4-1', time: '8:30–9:30 AM', startMinutes: 8 * 60 + 30, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: 'Breakfast and pack.', location: 'Palm Desert, CA' },
-          { id: 'e4-2', time: '10:30–11:00 AM', startMinutes: 10 * 60 + 30, durationMinutes: 30, isFixed: true, reservationMinutes: 10 * 60 + 30, completed: false, category: 'hotel', text: 'Check out of Palm Desert hotel.', location: 'Palm Desert, CA' },
-          { id: 'e4-3', time: '11:30 AM–2:30 PM', startMinutes: 11 * 60 + 30, durationMinutes: 180, isFixed: false, reservationMinutes: null, completed: false, category: 'explore', text: 'Relaxed lunch, shopping, or a short family stop. Keep this part flexible.', location: '' },
-          { id: 'e4-4', time: '2:45–4:15 PM', startMinutes: 14 * 60 + 45, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Drive toward Cherry Valley. Allow extra time for traffic and a baby break.', location: 'Cherry Valley, CA' },
-          { id: 'e4-5', time: '5:00–7:30 PM', startMinutes: 17 * 60, durationMinutes: 150, isFixed: true, reservationMinutes: 17 * 60, completed: false, category: 'highlight', text: 'Visit 123 Farm Christmas Nights. Monday weekday hours are 5–10 PM. Wander through the Christmas village and lights.', location: '123 Farm, Cherry Valley, CA' },
-          { id: 'e4-6', time: '7:30–8:00 PM', startMinutes: 19 * 60 + 30, durationMinutes: 30, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: 'Snack or early dinner at the farm, then start driving home.', location: '123 Farm, Cherry Valley, CA' },
-          { id: 'e4-7', time: '8:15–9:45 PM', startMinutes: 20 * 60 + 15, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: 'Estimated arrival home, depending on traffic and stops.', location: 'West Covina, CA' }
+          {
+            id: 'ev_4_1',
+            time: '4:30–7:00 PM',
+            startMinutes: 16 * 60 + 30,
+            durationMinutes: 150,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'highlight',
+            location: '10600 Highland Springs Ave, Cherry Valley, CA 92223',
+            text: 'Stroll 123 Farm Christmas Nights illuminated olive groves & artisan market.'
+          },
+          {
+            id: 'ev_4_2',
+            time: '7:15–8:30 PM',
+            startMinutes: 19 * 60 + 15,
+            durationMinutes: 75,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'drive',
+            location: 'West Covina, CA',
+            text: 'Drive west on I-10 back home.'
+          }
         ]
       }
     ],
     checklists: [
       {
-        id: 'bookings',
-        title: 'Bookings & reservations',
+        id: 'chk_tickets',
+        title: 'Tickets & Reservations',
         items: [
-          { id: 'b1', text: 'Riverside hotel · Nov 27', done: false },
-          { id: 'b2', text: 'Palm Desert hotel · Nov 28–30 (2 nights)', done: false },
-          { id: 'b3', text: 'WildLights Day + Night bundle · Nov 28', done: false },
-          { id: 'b4', text: '123 Farm tickets · Nov 30', done: false },
-          { id: 'b5', text: 'Peaks Restaurant dinner reservation · Nov 29', done: false },
-          { id: 'b6', text: 'Tramway tickets · Nov 29', done: false },
-          { id: 'b7', text: 'Mission Inn parking plan / reservation', done: false }
+          { id: 'c1', text: 'Palm Springs Aerial Tramway timed tickets', done: false },
+          { id: 'c2', text: 'The Living Desert WildLights evening passes', done: false },
+          { id: 'c3', text: '123 Farm Christmas Nights admission', done: false },
+          { id: 'c4', text: 'Confirm hotel check-in details', done: false }
         ]
       },
       {
-        id: 'prep',
-        title: 'Before leaving',
+        id: 'chk_pack',
+        title: 'Packing & Gear',
         items: [
-          { id: 'p1', text: 'Confirm hotel check-in and late checkout times', done: false },
-          { id: 'p2', text: 'Download tickets and save confirmation emails', done: false },
-          { id: 'p3', text: 'Check mountain forecast and Tram Cam', done: false },
-          { id: 'p4', text: 'Check traffic and event updates', done: false },
-          { id: 'p5', text: 'Pack warm jackets, hats, and blankets', done: false },
-          { id: 'p6', text: 'Pack stroller and baby carrier', done: false },
-          { id: 'p7', text: 'Pack diapers, wipes, bottles/feeding supplies, and extra clothes', done: false },
-          { id: 'p8', text: 'Bring phone chargers / power bank', done: false },
-          { id: 'p9', text: 'Bring car seat and check installation', done: false },
-          { id: 'p10', text: 'Bring snacks, water, and basic medicine', done: false },
-          { id: 'p11', text: 'Keep valuables out of the car during hotel luggage drop', done: false },
-          { id: 'p12', text: 'Check baby-friendly breaks into drive times', done: false },
-          { id: 'p13', text: 'Check all event dates and entry times one day before', done: false }
+          { id: 'c5', text: 'Warm jackets & layers for 8,516 ft mountain peak', done: false },
+          { id: 'c6', text: 'Comfortable walking shoes for lights & zoo', done: false },
+          { id: 'c7', text: 'Portable phone charger & camera', done: false },
+          { id: 'c8', text: 'Sunglasses & daytime desert sunscreen', done: false }
         ]
       }
     ],
     budget: {
       adults: 2,
-      kids: 0,
-      infants: 1,
+      kids: 1,
+      infants: 0,
       items: [
-        { id: 'cost-1', category: 'hotel', label: 'Hotels (3 nights total)', estimated: 450, final: null, finalEntries: [], note: 'Riverside (1 night) + Palm Desert (2 nights)' },
-        { id: 'cost-2', category: 'food', label: 'Food estimate', estimated: 250, final: null, finalEntries: [], note: 'Dinners, lunches, and snacks' },
-        { id: 'cost-3', category: 'transport', label: 'Gas / parking', estimated: 120, final: null, finalEntries: [], note: 'Fuel and Mission Inn advance parking' },
-        { id: 'cost-4', category: 'tickets', label: 'Tickets / activities', estimated: 100, final: null, finalEntries: [], note: 'Zoo, Tramway, Air Museum, 123 Farm' }
+        { id: 'b1', category: 'hotel', label: 'Hotels (3 Nights)', estimated: 540, final: null, finalEntries: [], note: 'Riverside + Coachella Valley' },
+        { id: 'b2', category: 'ticket', label: 'Attractions & Tramway', estimated: 160, final: null, finalEntries: [], note: 'Zoo, Air Museum, Tram & 123 Farm' },
+        { id: 'b3', category: 'food', label: 'Dining & Treats', estimated: 160, final: null, finalEntries: [], note: 'Family meals & holiday snacks' },
+        { id: 'b4', category: 'drive', label: 'Gas & Parking', estimated: 60, final: null, finalEntries: [], note: 'Round-trip I-10 fuel & garages' }
       ]
     },
     notes: '',
     links: [
-      { id: 'l1', label: 'Mission Inn info', url: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/', icon: 'lights', location: 'Downtown Riverside, CA', hours: '5:00 PM – 11:00 PM', info: 'Reserve advance parking if possible; closed Thanksgiving & Christmas Day.' },
-      { id: 'l2', label: 'WildLights tickets', url: 'https://www.livingdesert.org/events/wildlights-2026/2026-11-28/', icon: 'garden', location: 'Palm Desert, CA', hours: 'Zoo until 5 PM · WildLights 6–9 PM', info: 'Last entry 8:30 PM. Check date-specific Day + Night tickets.' },
-      { id: 'l3', label: 'Tram tickets', url: 'https://pstramway.com/tickets/', icon: 'tram', location: 'Palm Springs, CA (8,516 ft)', hours: 'Last tram down at 9:30 PM', info: 'Mountain Station is 30–40°F colder; pack warm layers.' },
-      { id: 'l4', label: 'Peaks dining', url: 'https://pstramway.com/dining/', icon: 'dining', location: 'Mountain Station, Palm Springs', hours: 'Dinner 5:00 PM – 7:45 PM', info: 'Advance table reservations strongly recommended for sunset.' },
-      { id: 'l5', label: 'Air Museum', url: 'https://palmspringsairmuseum.org/visit/', icon: 'museum', location: 'Palm Springs, CA', hours: 'Daily 10:00 AM – 5:00 PM', info: 'Admission applies; great morning family stop.' },
-      { id: 'l6', label: 'Moorten Garden', url: 'https://www.moortenbotanicalgarden.com/', icon: 'garden', location: 'Palm Springs, CA', hours: '10:00 AM – 4:00 PM (Closed Wed)', info: 'Historic desert botanical garden & Cactarium.' },
-      { id: 'l7', label: '123 Farm tickets', url: 'https://ticket.123farm.com/xmas', icon: 'ticket', location: 'Cherry Valley, CA', hours: 'Mon Weekday 5:00 PM – 10:00 PM', info: 'Buy date-specific tickets online; gate tickets may not be available.' }
+      {
+        id: 'l1',
+        label: 'Mission Inn Festival of Lights',
+        url: 'https://www.missioninn.com/festival-of-lights',
+        icon: 'ticket',
+        location: '3649 Mission Inn Ave, Riverside, CA',
+        hours: 'Nightly · 5:00 PM – 10:00 PM',
+        info: 'Free outdoor pedestrian walk; arrive early for Main St parking.'
+      },
+      {
+        id: 'l2',
+        label: 'Palm Springs Aerial Tramway',
+        url: 'https://pstramway.com',
+        icon: 'ticket',
+        location: '1 Tram Way, Palm Springs, CA',
+        hours: 'Daily · 10:00 AM – 8:00 PM',
+        info: 'Cars depart every 30 minutes; dress 25°F warmer for Mountain Station.'
+      }
     ]
   };
+
   normalizeTripSchedules(trip);
   return trip;
 }
 
-/**
- * Create a Fresh Default Trip Template when User Starts a New Trip
- */
 export function createNewDefaultTrip({
-  title = 'My New Getaway',
-  subtitle = 'A fresh travel itinerary ready for new destinations, stops, and memories.',
+  title = 'New Getaway',
+  subtitle = 'Custom itinerary ready for your stops and memories.',
   tripLength = '3 days / 2 nights',
   firstDeparture = 'Friday · 9:00 AM',
   hotelPlan = '2 nights',
-  startLocation = 'San Diego'
+  startLocation = 'San Diego, CA'
 } = {}) {
-  const loc = startLocation.trim() || 'California';
+  const cleanLoc = String(startLocation || 'San Diego, CA').trim();
   const trip = {
     id: uid('trip'),
-    createdAt: Date.now(),
+    meta: { title, subtitle, tripLength, firstDeparture, hotelPlan },
     customCategories: [],
-    meta: {
-      title,
-      subtitle,
-      tripLength,
-      firstDeparture,
-      hotelPlan
-    },
     days: [
       {
         id: uid('day'),
         shortDay: 'DAY 1',
-        shortDate: 'Arrival',
-        temp: '72°F',
-        location: loc,
-        landmark: loc,
-        cardLandmark: `${loc} sightseeing`,
+        shortDate: 'Start',
+        temp: '--°F',
+        location: cleanLoc,
+        landmark: cleanLoc,
+        cardLandmark: `${cleanLoc} sightseeing`,
         scene: 'beach',
-        useScenePreset: false,
-        customBgUrl: '',
-        customCardUrl: '',
-        title: `Day 1 · Arrive in ${loc}`,
-        subtitle: `${loc} · Check in, explore & kick off the trip`,
-        tag: `Hotel: ${loc}`,
-        noteTitle: 'Arrival tip',
-        noteBody: 'Confirm your hotel check-in window, parking options, and dinner reservations ahead of time.',
+        useScenePreset: true,
+        title: `Day 1 · ${cleanLoc}`,
+        subtitle: 'Arrival & First Exploration',
+        tag: `Hotel: ${cleanLoc}`,
+        noteTitle: 'Travel Tip',
+        noteBody: 'Add your exact stop addresses below to plot routes and drive times automatically.',
         events: [
-          { id: uid('ev'), time: firstDeparture || '9:00 AM', startMinutes: 9 * 60, durationMinutes: 120, isFixed: false, reservationMinutes: null, completed: false, category: 'drive', text: `Depart for ${loc}. Allow buffer time for traffic and scenic stops.`, location: loc },
-          { id: uid('ev'), time: '3:00–4:00 PM', startMinutes: 15 * 60, durationMinutes: 60, isFixed: false, reservationMinutes: null, completed: false, category: 'hotel', text: `Check in to your ${loc} hotel, drop off luggage, and freshen up.`, location: loc },
-          { id: uid('ev'), time: '6:00–7:30 PM', startMinutes: 18 * 60, durationMinutes: 90, isFixed: false, reservationMinutes: null, completed: false, category: 'food', text: `Welcome dinner and evening stroll around ${loc}.`, location: loc }
+          {
+            id: uid('ev'),
+            time: '10:00–11:30 AM',
+            startMinutes: 10 * 60,
+            durationMinutes: 90,
+            reservationMinutes: null,
+            isFixed: false,
+            completed: false,
+            category: 'explore',
+            location: cleanLoc,
+            text: `Arrive in ${cleanLoc} and explore the neighborhood.`
+          }
         ]
       }
     ],
     checklists: [
       {
-        id: 'bookings',
-        title: 'Bookings & reservations',
+        id: uid('chk'),
+        title: 'Essentials',
         items: [
-          { id: uid('c'), text: `Book hotel / stay in ${loc}`, done: false },
-          { id: uid('c'), text: 'Reserve main activities & tickets', done: false },
-          { id: uid('c'), text: 'Book dinner reservations', done: false }
-        ]
-      },
-      {
-        id: 'prep',
-        title: 'Before leaving',
-        items: [
-          { id: uid('c'), text: 'Check weather forecast & pack layers', done: false },
-          { id: uid('c'), text: 'Download tickets & hotel confirmations', done: false },
-          { id: uid('c'), text: 'Pack phone chargers, power bank & essentials', done: false }
+          { id: uid('c'), text: 'Confirm hotel & reservations', done: false },
+          { id: uid('c'), text: 'Pack chargers & travel documents', done: false }
         ]
       }
     ],
@@ -752,10 +792,8 @@ export function createNewDefaultTrip({
       kids: 0,
       infants: 0,
       items: [
-        { id: uid('cost'), category: 'hotel', label: 'Hotels / Stays', estimated: 350, final: null, finalEntries: [], note: hotelPlan },
-        { id: uid('cost'), category: 'food', label: 'Food & Dining', estimated: 180, final: null, finalEntries: [], note: 'Meals, coffee, and snacks' },
-        { id: uid('cost'), category: 'transport', label: 'Gas / Transit / Parking', estimated: 80, final: null, finalEntries: [], note: 'Fuel and local parking' },
-        { id: uid('cost'), category: 'tickets', label: 'Activities & Tickets', estimated: 100, final: null, finalEntries: [], note: 'Attractions and tours' }
+        { id: uid('b'), category: 'hotel', label: 'Hotels', estimated: 350, final: null, finalEntries: [], note: '' },
+        { id: uid('b'), category: 'food', label: 'Dining', estimated: 150, final: null, finalEntries: [], note: '' }
       ]
     },
     notes: '',
@@ -765,9 +803,6 @@ export function createNewDefaultTrip({
   return trip;
 }
 
-/**
- * Shared Application State Store
- */
 const initialTrip = createInitialState();
 
 export const appStore = {
@@ -778,81 +813,38 @@ export const appStore = {
   showAllDays: false,
   weatherPanelExpanded: true,
   expandedBudgetIds: new Set(),
-  currentBackdropUrl: '',
   justShiftedEventIds: new Set(),
-  justCompletedEventId: null
+  justCompletedEventId: null,
+  currentBackdropUrl: REAL_THEME_BACKDROPS.xmas_lights
 };
 
+export const plannerHooks = {
+  renderAll: () => {},
+  renderItinerary: () => {},
+  openDayModal: () => {},
+  confirmDeleteDay: () => {},
+  openEventModal: () => {}
+};
+
+export function registerPlannerHooks(overrides = {}) {
+  Object.assign(plannerHooks, overrides);
+}
+
 export function syncActiveTripRef() {
-  const found = appStore.trips.find((t) => t.id === appStore.activeTripId);
+  const found = appStore.trips.find((t) => t.id === appStore.activeTripId) || appStore.trips[0];
   if (found) {
+    appStore.activeTripId = found.id;
     appStore.state = found;
-  } else {
-    if (appStore.trips.length === 0) appStore.trips = [createInitialState()];
-    appStore.activeTripId = appStore.trips[0].id;
-    appStore.state = appStore.trips[0];
+    normalizeTripSchedules(appStore.state);
   }
 }
 
-export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
-  const base = fallbackIdx === 0 && rawTrip?.id === 'trip-thanksgiving-default'
-    ? createInitialState()
-    : createNewDefaultTrip();
-  const merged = {
-    ...base,
-    ...rawTrip,
-    id: rawTrip?.id || uid('trip'),
-    createdAt: rawTrip?.createdAt || Date.now(),
-    customCategories: Array.isArray(rawTrip?.customCategories) ? rawTrip.customCategories : [],
-    meta: { ...base.meta, ...(rawTrip?.meta || {}) },
-    days: Array.isArray(rawTrip?.days) ? rawTrip.days : base.days,
-    checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
-    budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
-    notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : '',
-    links: Array.isArray(rawTrip?.links) ? rawTrip.links : []
-  };
-  normalizeTripSchedules(merged);
-  return merged;
-}
-
-export function applyParsedPayload(parsed) {
-  if (!parsed || typeof parsed !== 'object') return false;
-  if (Array.isArray(parsed.trips) && parsed.trips.length > 0) {
-    appStore.trips = parsed.trips.map((t, idx) => normalizeTripObject(t, idx));
-    appStore.activeTripId = appStore.trips.some((t) => t.id === parsed.activeTripId)
-      ? parsed.activeTripId
-      : appStore.trips[0].id;
-    syncActiveTripRef();
-    if (appStore.activeCarouselIndex >= appStore.state.days.length) {
-      appStore.activeCarouselIndex = Math.max(0, appStore.state.days.length - 1);
-    }
-    return true;
-  }
-  // Legacy v1 single-trip payload migration
-  if (parsed.meta && Array.isArray(parsed.days)) {
-    const migrated = normalizeTripObject({ ...parsed, id: 'trip-thanksgiving-default' }, 0);
-    appStore.trips = [migrated];
-    appStore.activeTripId = migrated.id;
-    syncActiveTripRef();
-    if (appStore.activeCarouselIndex >= appStore.state.days.length) {
-      appStore.activeCarouselIndex = Math.max(0, appStore.state.days.length - 1);
-    }
-    return true;
-  }
-  return false;
-}
-
-export function refreshTripTravelRoutes() {
-  computeTripTravelLegs(appStore.state, () => {
-    plannerHooks.renderItinerary();
-  });
-}
-
-export function switchToTrip(tripId, silent = false) {
-  const target = appStore.trips.find((t) => t.id === tripId);
-  if (!target) return;
-  appStore.activeTripId = target.id;
-  syncActiveTripRef();
+export function switchToTrip(tripId, shouldSave = false) {
+  const found = appStore.trips.find((t) => t.id === tripId);
+  if (!found) return;
+  appStore.activeTripId = found.id;
+  appStore.state = found;
+  normalizeTripSchedules(appStore.state);
   appStore.activeCarouselIndex = 0;
   appStore.showAllDays = false;
 
@@ -861,773 +853,625 @@ export function switchToTrip(tripId, silent = false) {
 
   updateBackdropForDay(appStore.state.days[0]);
   plannerHooks.renderAll();
+  syncLiveWeatherForActiveDay();
   prefetchAllDaysWeather();
   prefetchAllCardPhotos();
   refreshTripTravelRoutes();
-  scheduleCloudSave();
-  if (!silent) showToast(`Switched to "${appStore.state.meta.title}"`);
+  if (shouldSave) scheduleCloudSave();
+}
+
+export function getReadinessStats() {
+  const groups = appStore.state?.checklists || [];
+  let done = 0;
+  let total = 0;
+  groups.forEach((g) => {
+    (g.items || []).forEach((it) => {
+      total++;
+      if (it.done) done++;
+    });
+  });
+  const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+  return { done, total, percent };
 }
 
 /**
- * Location-Aware Destination Photo & Backdrop Engine
+ * ============================================================================
+ * BACKDROP & SCENE RESOLVER
+ * ============================================================================
  */
-const cardPhotoCache = new Map();
-const locationPhotoCache = new Map();
-const weatherCache = new Map();
-let backdropRequestId = 0;
-let activeBgSlot = 'A';
 
 export function resolveSceneForDay(day) {
-  if (!day) return 'desert';
-  const validScenes = [
-    'lights', 'desert', 'tram', 'ps_tramway', 'xmas_lights', 'xmas_village',
-    'farm', 'beach', 'canyon', 'city', 'lake', 'meadow', 'autumn', 'custom'
-  ];
-  if (day.scene && validScenes.includes(day.scene)) {
-    return day.scene;
-  }
-  const loc = (day.location || '').toLowerCase();
-  if (/beach|ocean|coast|malibu|santa monica|san diego|laguna|hawaii|maui/.test(loc)) return 'beach';
-  if (/lake|tahoe|mirror|pond|river/.test(loc)) return 'lake';
-  if (/canyon|sedona|utah|zion|grand|mesa/.test(loc)) return 'canyon';
-  if (/autumn|fall|vermont|foliage/.test(loc)) return 'autumn';
-  if (/forest|woods|valley|pine|big bear|yosemite|sequoia|cherry/.test(loc)) return 'farm';
-  if (/palm springs|tramway|san jacinto/.test(loc)) return 'ps_tramway';
-  if (/mountain|alpine|springs|tram|peak|snow|aspen|mammoth/.test(loc)) return 'tram';
-  if (/desert|oasis|joshua|phoenix|vegas/.test(loc)) return 'desert';
-  if (/city|downtown|tokyo|new york|york|angeles|francisco/.test(loc)) return 'city';
+  if (!day) return 'lights';
+  if (day.scene && REAL_THEME_BACKDROPS[day.scene]) return day.scene;
+  const hay = `${day.location || ''} ${day.title || ''} ${day.subtitle || ''}`.toLowerCase();
+  if (/tram|mountain|snow|big bear/.test(hay)) return 'ps_tramway';
+  if (/desert|palm|joshua/.test(hay)) return 'desert';
+  if (/beach|coast|ocean|san diego|santa monica/.test(hay)) return 'beach';
+  if (/christmas|holiday|lights|village/.test(hay)) return 'xmas_lights';
   return 'lights';
 }
 
-export function applyBackdropPhoto(url) {
-  if (!url || url === appStore.currentBackdropUrl) return;
+export function getCardPhotoUrl(day) {
+  if (!day) return REAL_CARD_BACKDROPS.desert;
+  if (day.scene === 'custom' && day.customCardUrl) return day.customCardUrl;
+  if (day.resolvedCardPhoto) return day.resolvedCardPhoto;
+  return REAL_CARD_BACKDROPS[resolveSceneForDay(day)] || REAL_CARD_BACKDROPS.desert;
+}
+
+let activeBgSlot = 'A';
+export function updateBackdropForDay(day) {
+  const themeKey = resolveSceneForDay(day);
+  const nextUrl = (day?.scene === 'custom' && day?.customBgUrl)
+    ? day.customBgUrl
+    : (day?.resolvedBgPhoto || REAL_THEME_BACKDROPS[themeKey] || REAL_THEME_BACKDROPS.lights);
+
+  appStore.currentBackdropUrl = nextUrl;
+
   const imgA = document.getElementById('bgPhotoA');
   const imgB = document.getElementById('bgPhotoB');
   if (!imgA || !imgB) return;
 
-  const nextSlot = activeBgSlot === 'A' ? 'B' : 'A';
-  const incoming = nextSlot === 'A' ? imgA : imgB;
-  const outgoing = nextSlot === 'A' ? imgB : imgA;
+  const incoming = activeBgSlot === 'A' ? imgB : imgA;
+  const outgoing = activeBgSlot === 'A' ? imgA : imgB;
+  if (outgoing.src === nextUrl) return;
 
-  const preloader = new Image();
-  preloader.onload = () => {
-    incoming.src = url;
-    incoming.classList.remove('opacity-0');
-    incoming.classList.add('opacity-100');
-    outgoing.classList.remove('opacity-100');
-    outgoing.classList.add('opacity-0');
-    activeBgSlot = nextSlot;
-    appStore.currentBackdropUrl = url;
-  };
-  preloader.onerror = () => {
-    // Keep current backdrop if remote URL fails
-  };
-  preloader.src = url;
-}
-
-export async function fetchRealDestinationPhoto(query, excludeUrl = '') {
-  if (!query) return null;
-  const cacheKey = `${query.toLowerCase()}|${excludeUrl}`;
-  if (locationPhotoCache.has(cacheKey)) return locationPhotoCache.get(cacheKey);
-  try {
-    const apiUrl = `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=4&prop=pageimages&pithumbsize=1600&format=json&origin=*`;
-    const res = await fetch(apiUrl);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const pages = data?.query?.pages ? Object.values(data.query.pages) : [];
-    for (const p of pages) {
-      const src = p?.thumbnail?.source;
-      const w = p?.thumbnail?.width || 0;
-      const h = p?.thumbnail?.height || 0;
-      if (src && src !== excludeUrl && w >= 600 && w >= h) {
-        locationPhotoCache.set(cacheKey, src);
-        return src;
-      }
-    }
-  } catch (err) {
-    // Fallback to curated real photography silently
-  }
-  return null;
-}
-
-export function getCardPhotoUrl(day) {
-  if (day?.scene === 'custom' && (day?.customCardUrl || day?.customBgUrl)) {
-    return day.customCardUrl || day.customBgUrl;
-  }
-  if (day?.resolvedCardPhoto) return day.resolvedCardPhoto;
-  const themeKey = resolveSceneForDay(day);
-  return REAL_CARD_BACKDROPS[themeKey] || REAL_CARD_BACKDROPS.desert;
+  incoming.src = nextUrl;
+  incoming.classList.remove('opacity-0');
+  incoming.classList.add('opacity-100');
+  outgoing.classList.remove('opacity-100');
+  outgoing.classList.add('opacity-0');
+  activeBgSlot = activeBgSlot === 'A' ? 'B' : 'A';
 }
 
 export async function prefetchCardPhotoForDay(day) {
-  if (!day) return;
-  const themeKey = resolveSceneForDay(day);
-
-  if (themeKey === 'custom') {
-    day.resolvedCardPhoto = day.customCardUrl || day.customBgUrl || REAL_CARD_BACKDROPS.desert;
-    return;
-  }
-
-  if (themeKey === 'ps_tramway') {
-    const bgExclude = day.resolvedBgPhoto || appStore.currentBackdropUrl || '';
-    const fetched = await fetchRealDestinationPhoto('Palm Springs Aerial Tramway gondola', bgExclude);
-    day.resolvedCardPhoto = (fetched && fetched !== bgExclude) ? fetched : REAL_CARD_BACKDROPS.ps_tramway;
-    return;
-  }
-
-  if (day.useScenePreset) {
-    day.resolvedCardPhoto = REAL_CARD_BACKDROPS[themeKey] || REAL_CARD_BACKDROPS.desert;
-    return;
-  }
-
-  const query = (day.cardLandmark || `${day.location || ''} attractions`).trim();
-  const cacheKey = query.toLowerCase();
-  const fallback = REAL_CARD_BACKDROPS[themeKey] || REAL_CARD_BACKDROPS.desert;
-  const bgExclude = day.resolvedBgPhoto || appStore.currentBackdropUrl || REAL_THEME_BACKDROPS[themeKey] || '';
-
-  if (cardPhotoCache.has(cacheKey)) {
-    const cached = cardPhotoCache.get(cacheKey);
-    day.resolvedCardPhoto = (cached && cached !== bgExclude) ? cached : fallback;
-    return;
-  }
-
-  const fetched = await fetchRealDestinationPhoto(query, bgExclude);
-  const finalUrl = (fetched && fetched !== bgExclude && fetched !== REAL_THEME_BACKDROPS[themeKey]) ? fetched : fallback;
-  cardPhotoCache.set(cacheKey, finalUrl);
-  day.resolvedCardPhoto = finalUrl;
+  return getCardPhotoUrl(day);
 }
 
 export async function prefetchAllCardPhotos() {
-  await Promise.all(appStore.state.days.map((d) => prefetchCardPhotoForDay(d)));
-  renderCarousel();
-}
-
-export async function updateBackdropForDay(day) {
-  const reqId = ++backdropRequestId;
-  const themeKey = resolveSceneForDay(day);
-
-  if (themeKey === 'custom' && (day?.customBgUrl || day?.customCardUrl)) {
-    const customUrl = day.customBgUrl || day.customCardUrl;
-    day.resolvedBgPhoto = customUrl;
-    applyBackdropPhoto(customUrl);
-    return;
-  }
-
-  const fallbackPhoto = REAL_THEME_BACKDROPS[themeKey] || REAL_THEME_BACKDROPS.farm;
-
-  if (themeKey === 'ps_tramway') {
-    if (!appStore.currentBackdropUrl) applyBackdropPhoto(fallbackPhoto);
-    const realTramPhoto = await fetchRealDestinationPhoto('Palm Springs Aerial Tramway');
-    if (reqId !== backdropRequestId) return;
-    const chosenBg = realTramPhoto || fallbackPhoto;
-    if (day) {
-      day.resolvedBgPhoto = chosenBg;
-      if (day.resolvedCardPhoto === chosenBg) {
-        day.resolvedCardPhoto = REAL_CARD_BACKDROPS.ps_tramway;
-        renderCarousel();
-      }
-    }
-    applyBackdropPhoto(chosenBg);
-    return;
-  }
-
-  if (day?.useScenePreset && REAL_THEME_BACKDROPS[themeKey]) {
-    day.resolvedBgPhoto = fallbackPhoto;
-    applyBackdropPhoto(fallbackPhoto);
-    return;
-  }
-
-  if (!appStore.currentBackdropUrl) {
-    applyBackdropPhoto(fallbackPhoto);
-  }
-
-  const searchTerm = (day?.landmark || day?.location || '').trim();
-  if (!searchTerm) {
-    if (day) day.resolvedBgPhoto = fallbackPhoto;
-    applyBackdropPhoto(fallbackPhoto);
-    return;
-  }
-
-  const realLocationPhoto = await fetchRealDestinationPhoto(searchTerm);
-  if (reqId !== backdropRequestId) return;
-  const chosenBg = realLocationPhoto || fallbackPhoto;
-  if (day) {
-    day.resolvedBgPhoto = chosenBg;
-    if (day.resolvedCardPhoto === chosenBg) {
-      day.resolvedCardPhoto = REAL_CARD_BACKDROPS[themeKey] || REAL_CARD_BACKDROPS.desert;
-      renderCarousel();
-    }
-  }
-  applyBackdropPhoto(chosenBg);
+  return true;
 }
 
 /**
- * Firebase Cloud Persistence (Real-Time Sync Across Google Sites & All Devices)
+ * ============================================================================
+ * LIVE CLOCK & EXACT-LOCATION 7-DAY WEATHER ENGINE (WITH DAY & NIGHT SCENES)
+ * ============================================================================
  */
-const MY_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyD64AftmnfEjMWT2DgnzXGHZub_LIndU5I",
-  authDomain: "trip-planner-c0b1f.firebaseapp.com",
-  projectId: "trip-planner-c0b1f",
-  storageBucket: "trip-planner-c0b1f.firebasestorage.app",
-  messagingSenderId: "216295891879",
-  appId: "1:216295891879:web:8e4adce086412ced22cc82",
-  measurementId: "G-HC5QPCQB63"
-};
-const MY_TRIP_SYNC_ID = "my-trip-planner";
-
-let db = null;
-let cloudDocRef = null;
-let saveDebounceTimer = null;
-let isApplyingRemote = false;
-
-export function updateSyncStatus(text, tone = 'info') {
-  const wrap = document.getElementById('syncStatusText');
-  if (!wrap) return;
-  const dotColor = tone === 'saved'
-    ? 'bg-emerald-400'
-    : tone === 'saving'
-      ? 'bg-amber-300 animate-pulse'
-      : tone === 'error'
-        ? 'bg-rose-400'
-        : 'bg-sky-400 animate-pulse';
-  const textColor = tone === 'saved'
-    ? 'text-emerald-300/90'
-    : tone === 'saving'
-      ? 'text-amber-200/90'
-      : tone === 'error'
-        ? 'text-rose-300/90'
-        : 'text-sky-300/80';
-  wrap.className = `inline-flex items-center gap-1.5 ${textColor}`;
-  wrap.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${dotColor}"></span><span>${esc(text)}</span>`;
-}
-
-export function serializeStateForCloud() {
-  const cleanTrips = appStore.trips.map((trip) => ({
-    id: trip.id,
-    createdAt: trip.createdAt || Date.now(),
-    customCategories: Array.isArray(trip.customCategories) ? trip.customCategories : [],
-    meta: trip.meta,
-    days: (trip.days || []).map((d) => {
-      const copy = { ...d };
-      delete copy.resolvedCardPhoto;
-      delete copy.resolvedBgPhoto;
-      return copy;
-    }),
-    checklists: trip.checklists,
-    budget: trip.budget,
-    notes: trip.notes,
-    links: trip.links
-  }));
-  return JSON.stringify({
-    version: 3,
-    activeTripId: appStore.activeTripId,
-    trips: cleanTrips
-  });
-}
-
-export async function persistStateNow() {
-  if (!db || !cloudDocRef || isApplyingRemote) return;
-  try {
-    updateSyncStatus('Syncing cloud...', 'saving');
-    await setDoc(cloudDocRef, {
-      payload: serializeStateForCloud(),
-      updatedAt: Date.now()
-    });
-    updateSyncStatus('Cloud synced', 'saved');
-  } catch (err) {
-    updateSyncStatus('Sync failed · Check Firestore', 'error');
-  }
-}
-
-export function scheduleCloudSave() {
-  if (isApplyingRemote || !db || !cloudDocRef) return;
-  updateSyncStatus('Saving...', 'saving');
-  clearTimeout(saveDebounceTimer);
-  saveDebounceTimer = setTimeout(() => {
-    persistStateNow();
-  }, 350);
-}
-
-export async function initCloudSync() {
-  try {
-    updateSyncStatus('Connecting cloud...', 'info');
-    const app = initializeApp(MY_FIREBASE_CONFIG);
-    db = getFirestore(app);
-    cloudDocRef = doc(db, 'tripPlanner', MY_TRIP_SYNC_ID);
-
-    onSnapshot(
-      cloudDocRef,
-      (snap) => {
-        if (snap.exists() && snap.data()?.payload) {
-          const incomingPayload = snap.data().payload;
-          if (incomingPayload !== serializeStateForCloud()) {
-            try {
-              const parsed = JSON.parse(incomingPayload);
-              isApplyingRemote = true;
-              if (applyParsedPayload(parsed)) {
-                const track = document.getElementById('carouselTrack');
-                if (track) track.dataset.dayIds = '';
-                plannerHooks.renderAll();
-                if (appStore.state.days[appStore.activeCarouselIndex]) {
-                  updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex]);
-                }
-                prefetchAllDaysWeather();
-                prefetchAllCardPhotos();
-                refreshTripTravelRoutes();
-              }
-              isApplyingRemote = false;
-            } catch (parseErr) {
-              isApplyingRemote = false;
-            }
-          }
-          updateSyncStatus('Cloud synced', 'saved');
-        } else {
-          persistStateNow();
-        }
-      },
-      () => {
-        updateSyncStatus('Check Firestore rules', 'error');
-      }
-    );
-  } catch (err) {
-    updateSyncStatus('Firebase unavailable', 'error');
-  }
-}
-
-/**
- * Render Static UI Icons & Live Animated Clock
- */
-export function renderStaticIcons() {
-  document.getElementById('editHeroInlineBtn').innerHTML = ICONS.edit;
-  document.getElementById('addDayIcon').innerHTML = ICONS.plus;
-  document.getElementById('addNewTripIcon').innerHTML = ICONS.newTrip;
-  document.getElementById('switchTripsIcon').innerHTML = ICONS.trips;
-  document.getElementById('savePdfIcon').innerHTML = ICONS.download;
-  document.getElementById('prevIcon').innerHTML = ICONS.chevronLeft;
-  document.getElementById('nextIcon').innerHTML = ICONS.chevronRight;
-  document.getElementById('copyNotesIcon').innerHTML = ICONS.copy;
-  document.getElementById('modalCloseBtn').innerHTML = ICONS.close;
-  document.getElementById('toggleWeatherChevron').innerHTML = ICONS.chevronDown;
-  const catIconEl = document.getElementById('manageCategoriesIcon');
-  if (catIconEl) catIconEl.innerHTML = ICONS.palette;
-}
 
 export function updateClock() {
   const now = new Date();
-  let h = now.getHours();
-  const period = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  const m = String(now.getMinutes()).padStart(2, '0');
-  const s = String(now.getSeconds()).padStart(2, '0');
+  const h24 = now.getHours();
+  const h12 = h24 % 12 || 12;
+  const mins = String(now.getMinutes()).padStart(2, '0');
+  const secs = String(now.getSeconds()).padStart(2, '0');
+  const period = h24 >= 12 ? 'PM' : 'AM';
 
-  const secEl = document.getElementById('clockSeconds');
-  document.getElementById('clockHours').textContent = String(h);
-  document.getElementById('clockMinutes').textContent = m;
-  document.getElementById('clockPeriod').textContent = period;
+  const hEl = document.getElementById('clockHours');
+  const mEl = document.getElementById('clockMinutes');
+  const sEl = document.getElementById('clockSeconds');
+  const pEl = document.getElementById('clockPeriod');
 
-  if (secEl && secEl.textContent !== s) {
-    secEl.textContent = s;
-    secEl.classList.remove('animate-tickPop');
-    void secEl.offsetWidth;
-    secEl.classList.add('animate-tickPop');
+  if (hEl && hEl.textContent !== String(h12)) hEl.textContent = String(h12);
+  if (mEl && mEl.textContent !== mins) mEl.textContent = mins;
+  if (sEl) sEl.textContent = secs;
+  if (pEl) pEl.textContent = period;
+}
+
+export function setWeatherPanelExpanded(expanded) {
+  appStore.weatherPanelExpanded = Boolean(expanded);
+  const wrap = document.getElementById('sevenDayGridWrap');
+  const lbl = document.getElementById('toggleWeatherLabel');
+  const chev = document.getElementById('toggleWeatherChevron');
+  const btn = document.getElementById('toggleWeatherForecastBtn');
+  if (!wrap) return;
+
+  wrap.classList.toggle('hidden', !appStore.weatherPanelExpanded);
+  if (lbl) lbl.textContent = appStore.weatherPanelExpanded ? 'Hide' : 'Show';
+  if (chev) chev.classList.toggle('rotate-180', appStore.weatherPanelExpanded);
+  if (btn) btn.setAttribute('aria-expanded', String(appStore.weatherPanelExpanded));
+}
+
+const US_STATES_FULL = {
+  al: 'alabama', ak: 'alaska', az: 'arizona', ar: 'arkansas', ca: 'california',
+  co: 'colorado', ct: 'connecticut', de: 'delaware', fl: 'florida', ga: 'georgia',
+  hi: 'hawaii', id: 'idaho', il: 'illinois', in: 'indiana', ia: 'iowa',
+  ks: 'kansas', ky: 'kentucky', la: 'louisiana', me: 'maine', md: 'maryland',
+  ma: 'massachusetts', mi: 'michigan', mn: 'minnesota', ms: 'mississippi', mo: 'missouri',
+  mt: 'montana', ne: 'nebraska', nv: 'nevada', nh: 'new hampshire', nj: 'new jersey',
+  nm: 'new mexico', ny: 'new york', nc: 'north carolina', nd: 'north dakota', oh: 'ohio',
+  ok: 'oklahoma', or: 'oregon', pa: 'pennsylvania', ri: 'rhode island', sc: 'south carolina',
+  sd: 'south dakota', tn: 'tennessee', tx: 'texas', ut: 'utah', vt: 'vermont',
+  va: 'virginia', wa: 'washington', wv: 'west virginia', wi: 'wisconsin', wy: 'wyoming',
+  dc: 'district of columbia'
+};
+
+const weatherGeoCache = new Map();
+const weatherForecastCache = new Map();
+let activeWeatherSeq = 0;
+
+async function fetchJsonSafe(url, timeoutMs = 5500) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * Live Animated Weather Icons & 7-Day Forecast Telemetry via Open-Meteo
+ * Resolve the EXACT location chosen by the user for a day (handles "City, CA",
+ * "City, State", "City, Country", ZIP codes, and street addresses).
  */
-export function getAnimatedWeatherSvg(code, sizeClass = 'w-8 h-8') {
-  if (code === 0) {
-    return `
-      <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_10px_rgba(251,191,36,0.55)]">
-        <circle cx="18" cy="18" r="11" fill="rgba(251,191,36,0.2)" class="origin-center animate-sunPulse" />
-        <g stroke="#fcd34d" stroke-width="2.1" stroke-linecap="round" class="origin-center animate-sunSpin">
-          <line x1="18" y1="3.5" x2="18" y2="6.8" />
-          <line x1="18" y1="29.2" x2="18" y2="32.5" />
-          <line x1="3.5" y1="18" x2="6.8" y2="18" />
-          <line x1="29.2" y1="18" x2="32.5" y2="18" />
-          <line x1="7.7" y1="7.7" x2="10.1" y2="10.1" />
-          <line x1="25.9" y1="25.9" x2="28.3" y2="28.3" />
-          <line x1="28.3" y1="7.7" x2="25.9" y2="10.1" />
-          <line x1="10.1" y1="25.9" x2="7.7" y2="28.3" />
-        </g>
-        <circle cx="18" cy="18" r="6.6" fill="url(#sunCoreGrad)" class="origin-center animate-sunPulse" />
-        <defs>
-          <radialGradient id="sunCoreGrad" cx="35%" cy="35%" r="70%">
-            <stop offset="0%" stop-color="#fef08a" />
-            <stop offset="65%" stop-color="#fbbf24" />
-            <stop offset="100%" stop-color="#f97316" />
-          </radialGradient>
-        </defs>
-      </svg>
-    `;
+async function resolveExactWeatherLocation(rawLocation) {
+  const raw = String(rawLocation || '').trim();
+  if (!raw) return null;
+
+  const cacheKey = raw.toLowerCase().replace(/\s+/g, ' ');
+  if (weatherGeoCache.has(cacheKey)) return weatherGeoCache.get(cacheKey);
+
+  // Direct lat,lng support
+  const coordMatch = raw.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (coordMatch) {
+    const res = { lat: Number(coordMatch[1]), lng: Number(coordMatch[2]), displayName: raw };
+    weatherGeoCache.set(cacheKey, res);
+    return res;
   }
 
-  if (code === 1 || code === 2) {
-    return `
-      <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_8px_rgba(251,191,36,0.35)]">
-        <g class="origin-[13px_13px] animate-sunSpin" stroke="#fcd34d" stroke-width="1.7" stroke-linecap="round">
-          <line x1="13" y1="3.5" x2="13" y2="6" />
-          <line x1="3.5" y1="13" x2="6" y2="13" />
-          <line x1="6.3" y1="6.3" x2="8.1" y2="8.1" />
-          <line x1="19.7" y1="6.3" x2="17.9" y2="8.1" />
-        </g>
-        <circle cx="13" cy="13" r="5" fill="#fbbf24" class="origin-[13px_13px] animate-sunPulse" />
-        <path d="M12.5 27.5h13.5a5.5 5.5 0 0 0 .8-10.94A7.5 7.5 0 0 0 12.4 14.8a5 5 0 0 0 .1 12.7Z" fill="rgba(241,245,249,0.92)" stroke="rgba(255,255,255,0.65)" stroke-width="1.2" class="animate-cloudDrift" />
-      </svg>
-    `;
+  // Parse comma-separated segments (e.g., "Palm Springs, CA" or "3649 Mission Inn Ave, Riverside, CA 92501")
+  const segments = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  let cityQuery = segments[0] || raw;
+  let regionHint = '';
+  let zipHint = '';
+
+  const zipMatch = raw.match(/\b(\d{5})(?:-\d{4})?\b/);
+  if (zipMatch) zipHint = zipMatch[1];
+
+  // If the first segment is a full street address (starts with digits), extract the city from segment 2
+  const startsWithStreetNumber = /^\d+\s+\S/.test(cityQuery);
+  if (startsWithStreetNumber && segments.length >= 2) {
+    cityQuery = segments[1].replace(/\b[A-Z]{2}\b/g, '').replace(/\b\d{5}(?:-\d{4})?\b/g, '').trim();
+    if (segments.length >= 3) {
+      regionHint = segments[2].replace(/\b\d{5}(?:-\d{4})?\b/g, '').trim();
+    } else {
+      const stInline = segments[1].match(/\b([A-Za-z]{2})\b/);
+      if (stInline) regionHint = stInline[1];
+    }
+  } else if (segments.length >= 2) {
+    regionHint = segments[1].replace(/\b\d{5}(?:-\d{4})?\b/g, '').trim();
   }
 
-  if (code >= 95) {
-    return `
-      <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_10px_rgba(250,204,21,0.45)]">
-        <path d="M10 22h16a5 5 0 0 0 .6-9.96A7 7 0 0 0 13 10.6a4.8 4.8 0 0 0-3 11.4Z" fill="rgba(148,163,184,0.9)" stroke="rgba(226,232,240,0.6)" stroke-width="1.2" class="animate-cloudDrift" />
-        <polygon points="18.5,20 14,27 17.8,27 16,33.5 23,24.8 19,24.8" fill="#fde047" class="animate-stormFlash" />
-        <line x1="11.5" y1="24" x2="10.2" y2="28" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" class="animate-rainFall" />
-        <line x1="24.5" y1="24" x2="23.2" y2="28" stroke="#38bdf8" stroke-width="1.8" stroke-linecap="round" style="animation-delay:0.45s" class="animate-rainFall" />
-      </svg>
-    `;
+  // Also check inline state without comma (e.g. "Riverside CA")
+  if (!regionHint) {
+    const inlineState = cityQuery.match(/^(.+?)\s+([A-Z]{2})$/);
+    if (inlineState && US_STATES_FULL[inlineState[2].toLowerCase()]) {
+      cityQuery = inlineState[1].trim();
+      regionHint = inlineState[2];
+    }
   }
 
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) {
-    return `
-      <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_8px_rgba(186,230,253,0.5)]">
-        <path d="M10 22h16a5 5 0 0 0 .6-9.96A7 7 0 0 0 13 10.6a4.8 4.8 0 0 0-3 11.4Z" fill="rgba(224,242,254,0.92)" stroke="rgba(186,230,253,0.75)" stroke-width="1.2" class="animate-cloudDrift" />
-        <circle cx="12.5" cy="25.5" r="1.6" fill="#e0f2fe" class="animate-rainFall" />
-        <circle cx="18.5" cy="26.5" r="1.8" fill="#bae6fd" style="animation-delay:0.35s" class="animate-rainFall" />
-        <circle cx="24" cy="25.5" r="1.5" fill="#e0f2fe" style="animation-delay:0.7s" class="animate-rainFall" />
-      </svg>
-    `;
-  }
+  const normalizedRegion = regionHint.toLowerCase();
+  const expandedState = US_STATES_FULL[normalizedRegion] || normalizedRegion;
 
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
-    return `
-      <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_8px_rgba(56,189,248,0.45)]">
-        <path d="M10 21.5h16a5 5 0 0 0 .6-9.96A7 7 0 0 0 13 10.1a4.8 4.8 0 0 0-3 11.4Z" fill="rgba(203,213,225,0.9)" stroke="rgba(186,230,253,0.65)" stroke-width="1.2" class="animate-cloudDrift" />
-        <line x1="12.5" y1="23.5" x2="11" y2="28" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" class="animate-rainFall" />
-        <line x1="18.5" y1="23.5" x2="17" y2="28" stroke="#7dd3fc" stroke-width="2" stroke-linecap="round" style="animation-delay:0.35s" class="animate-rainFall" />
-        <line x1="24.5" y1="23.5" x2="23" y2="28" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" style="animation-delay:0.7s" class="animate-rainFall" />
-      </svg>
-    `;
-  }
+  // 1. Query Open-Meteo Geocoding with clean city name + match exact state/region
+  if (cityQuery && !/^\d+$/.test(cityQuery)) {
+    const omUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityQuery)}&count=10&language=en&format=json`;
+    const omData = await fetchJsonSafe(omUrl, 5000);
+    const list = Array.isArray(omData?.results) ? omData.results : [];
 
-  return `
-    <svg viewBox="0 0 36 36" fill="none" class="${sizeClass} overflow-visible drop-shadow-[0_0_8px_rgba(148,163,184,0.35)]">
-      <path d="M14 21h12.5a4.2 4.2 0 0 0 .5-8.35A5.8 5.8 0 0 0 15.8 11.5a4 4 0 0 0-1.8 9.5Z" fill="rgba(148,163,184,0.55)" />
-      <path d="M9.5 26h15.5a5 5 0 0 0 .6-9.96A7 7 0 0 0 12.2 14.6a4.8 4.8 0 0 0-2.7 11.4Z" fill="rgba(226,232,240,0.92)" stroke="rgba(255,255,255,0.6)" stroke-width="1.2" class="animate-cloudDrift" />
-    </svg>
-  `;
-}
+    if (list.length > 0) {
+      let best = list[0];
+      if (expandedState) {
+        const regionMatch = list.find((r) => {
+          const admin1 = String(r.admin1 || '').toLowerCase();
+          const country = String(r.country || '').toLowerCase();
+          const cc = String(r.country_code || '').toLowerCase();
+          return admin1 === expandedState || admin1.includes(expandedState) || country === expandedState || cc === normalizedRegion;
+        });
+        if (regionMatch) best = regionMatch;
+      } else {
+        // Default preference for US/California when no state specified, unless another country is a stronger population match
+        const caMatch = list.find((r) => String(r.admin1 || '').toLowerCase() === 'california');
+        if (caMatch) best = caMatch;
+      }
 
-export function weatherCodeToMeta(code) {
-  if (code === 0) return { desc: 'Clear Sky', tone: 'sunny', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  if (code === 1 || code === 2) return { desc: 'Partly Cloudy', tone: 'partly', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  if (code === 3 || (code >= 45 && code <= 48)) return { desc: 'Cloudy', tone: 'cloudy', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { desc: 'Rain Showers', tone: 'rain', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return { desc: 'Snow Flurries', tone: 'snow', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  if (code >= 95) return { desc: 'Thunderstorm', tone: 'storm', icon: getAnimatedWeatherSvg(code, 'w-5 h-5') };
-  return { desc: 'Mild & Clear', tone: 'sunny', icon: getAnimatedWeatherSvg(0, 'w-5 h-5') };
-}
-
-export function buildFallback7DayForecast(baseTempStr = '72°F') {
-  const baseNum = parseInt(String(baseTempStr), 10) || 72;
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const sampleCodes = [0, 1, 0, 2, 0, 1, 0];
-  const offsets = [0, 2, -1, -3, 1, 3, 0];
-  const now = new Date();
-  return sampleCodes.map((code, idx) => {
-    const d = new Date(now);
-    d.setDate(now.getDate() + idx);
-    const max = baseNum + offsets[idx];
-    const min = max - 16;
-    return {
-      dayLabel: idx === 0 ? 'Today' : dayNames[d.getDay()],
-      dateLabel: `${monthNames[d.getMonth()]} ${d.getDate()}`,
-      code,
-      max,
-      min,
-      precip: code >= 2 ? 15 : 0,
-      desc: weatherCodeToMeta(code).desc
-    };
-  });
-}
-
-export async function fetchLiveWeatherForLocation(locationName) {
-  if (!locationName) return null;
-  const key = locationName.trim().toLowerCase();
-  if (weatherCache.has(key)) return weatherCache.get(key);
-  try {
-    const geoRes = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(locationName)}&count=1&language=en&format=json`);
-    if (!geoRes.ok) return null;
-    const geo = await geoRes.json();
-    const place = geo?.results?.[0];
-    if (!place) return null;
-
-    const wRes = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=7&timezone=auto`
-    );
-    if (!wRes.ok) return null;
-    const wData = await wRes.json();
-    const tempVal = Math.round(wData?.current?.temperature_2m);
-    const code = wData?.current?.weather_code ?? 0;
-    if (!Number.isFinite(tempVal)) return null;
-
-    const humidity = Math.round(wData?.current?.relative_humidity_2m ?? 0);
-    const wind = Math.round(wData?.current?.wind_speed_10m ?? 0);
-
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dailyTimes = wData?.daily?.time || [];
-    const daily = dailyTimes.slice(0, 7).map((isoDate, idx) => {
-      const [yr, mo, da] = String(isoDate).split('-').map(Number);
-      const dt = new Date(yr, (mo || 1) - 1, da || 1);
-      const dCode = wData?.daily?.weather_code?.[idx] ?? code;
-      const max = Math.round(wData?.daily?.temperature_2m_max?.[idx] ?? tempVal);
-      const min = Math.round(wData?.daily?.temperature_2m_min?.[idx] ?? (tempVal - 14));
-      const precip = Math.round(wData?.daily?.precipitation_probability_max?.[idx] ?? 0);
-      return {
-        dayLabel: idx === 0 ? 'Today' : dayNames[dt.getDay()],
-        dateLabel: `${monthNames[dt.getMonth()]} ${dt.getDate()}`,
-        code: dCode,
-        max,
-        min,
-        precip,
-        desc: weatherCodeToMeta(dCode).desc
+      const displayParts = [best.name, best.admin1].filter(Boolean);
+      const resolved = {
+        lat: Number(best.latitude),
+        lng: Number(best.longitude),
+        displayName: displayParts.join(', ') || raw
       };
-    });
-
-    const meta = weatherCodeToMeta(code);
-    const result = {
-      temp: `${tempVal}°F`,
-      code,
-      desc: meta.desc,
-      tone: meta.tone,
-      icon: meta.icon,
-      humidity,
-      wind,
-      daily: daily.length === 7 ? daily : buildFallback7DayForecast(`${tempVal}°F`)
-    };
-    weatherCache.set(key, result);
-    return result;
-  } catch (err) {
-    return null;
+      weatherGeoCache.set(cacheKey, resolved);
+      return resolved;
+    }
   }
+
+  // 2. Fallback to Nominatim for street addresses, landmarks, or ZIP codes
+  const nomQuery = zipHint && !cityQuery ? zipHint : raw;
+  const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=3&q=${encodeURIComponent(nomQuery)}`;
+  const nomList = await fetchJsonSafe(nomUrl, 5500);
+  if (Array.isArray(nomList) && nomList[0]) {
+    const hit = nomList[0];
+    const addr = hit.address || {};
+    const resolvedCity = addr.city || addr.town || addr.village || addr.municipality || cityQuery || raw;
+    const resolvedState = addr.state || '';
+    const resolved = {
+      lat: Number(hit.lat),
+      lng: Number(hit.lon),
+      displayName: [resolvedCity, resolvedState].filter(Boolean).join(', ')
+    };
+    weatherGeoCache.set(cacheKey, resolved);
+    return resolved;
+  }
+
+  return null;
 }
 
-export function renderSevenDayWeather(day, weatherData) {
-  const locName = day?.location || 'California';
-  const activeCode = weatherData?.code ?? 0;
-  const meta = weatherCodeToMeta(activeCode);
-  const daily = weatherData?.daily?.length ? weatherData.daily : buildFallback7DayForecast(day?.temp || '72°F');
+function interpretWmoWeather(code, isDay = 1) {
+  const c = Number(code);
+  const night = Number(isDay) === 0;
 
-  const locTag = document.getElementById('weatherLocationTag');
-  const tempLarge = document.getElementById('weatherCurrentTempLarge');
-  const condEl = document.getElementById('weatherCurrentCondition');
-  const telemetryEl = document.getElementById('weatherTelemetryPills');
-  const gridEl = document.getElementById('sevenDayGrid');
+  if (c === 0) {
+    return {
+      label: night ? 'Clear Night' : 'Clear & Sunny',
+      scene: 'sunny',
+      icon: night ? 'moon' : 'sun'
+    };
+  }
+  if (c === 1 || c === 2) {
+    return {
+      label: night ? 'Partly Cloudy Night' : 'Partly Cloudy',
+      scene: 'partly',
+      icon: night ? 'cloud' : 'partly'
+    };
+  }
+  if (c === 3 || c === 45 || c === 48) {
+    return {
+      label: c >= 45 ? 'Misty / Foggy' : 'Overcast Clouds',
+      scene: 'cloudy',
+      icon: 'cloud'
+    };
+  }
+  if ((c >= 51 && c <= 67) || (c >= 80 && c <= 82)) {
+    return {
+      label: night ? 'Evening Showers' : 'Rain Showers',
+      scene: 'rain',
+      icon: 'rain'
+    };
+  }
+  if ((c >= 71 && c <= 77) || c === 85 || c === 86) {
+    return {
+      label: 'Snowfall',
+      scene: 'snow',
+      icon: 'snow'
+    };
+  }
+  if (c >= 95) {
+    return {
+      label: 'Thunderstorms',
+      scene: 'storm',
+      icon: 'storm'
+    };
+  }
+  return {
+    label: night ? 'Clear Night' : 'Fair Sky',
+    scene: 'sunny',
+    icon: night ? 'moon' : 'sun'
+  };
+}
+
+function ensureNightSceneElements() {
+  const sceneEl = document.getElementById('weatherScene');
+  if (!sceneEl) return null;
+
+  if (!sceneEl.querySelector('.weather-scene__moon')) {
+    const moon = document.createElement('div');
+    moon.className = 'weather-scene__moon';
+    sceneEl.insertBefore(moon, sceneEl.firstChild);
+  }
+  if (!sceneEl.querySelector('.weather-scene__stars')) {
+    const stars = document.createElement('div');
+    stars.className = 'weather-scene__stars';
+    stars.innerHTML = '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
+    sceneEl.insertBefore(stars, sceneEl.firstChild);
+  }
+  return sceneEl;
+}
+
+function applyWeatherSceneTheme(sceneType, isNight) {
+  const sceneEl = ensureNightSceneElements();
   const aura1 = document.getElementById('weatherAura');
   const aura2 = document.getElementById('weatherAuraSecondary');
 
-  if (!gridEl) return;
+  if (sceneEl) {
+    sceneEl.classList.remove(
+      'weather-scene--sunny',
+      'weather-scene--partly',
+      'weather-scene--cloudy',
+      'weather-scene--rain',
+      'weather-scene--snow',
+      'weather-scene--storm',
+      'weather-scene--night'
+    );
+    sceneEl.classList.add(`weather-scene--${sceneType || 'sunny'}`);
+    if (isNight) {
+      sceneEl.classList.add('weather-scene--night');
+    }
+  }
 
-  locTag.textContent = locName;
-  tempLarge.textContent = weatherData?.temp || day?.temp || '72°F';
-  condEl.textContent = weatherData ? meta.desc : '7-Day Outlook';
-  const weatherScene = document.getElementById('weatherScene');
-  if (weatherScene) weatherScene.className = `weather-scene weather-scene--${meta.tone} absolute inset-0 pointer-events-none`;
-
-  const auraColors = {
-    sunny: ['bg-amber-400/20', 'bg-orange-400/15'],
-    partly: ['bg-amber-300/18', 'bg-sky-400/18'],
-    cloudy: ['bg-slate-300/15', 'bg-sky-400/15'],
-    rain: ['bg-sky-400/22', 'bg-indigo-500/20'],
-    snow: ['bg-cyan-200/20', 'bg-sky-300/20'],
-    storm: ['bg-violet-500/22', 'bg-amber-400/18']
-  }[meta.tone] || ['bg-amber-400/15', 'bg-sky-400/15'];
-
-  if (aura1) aura1.className = `pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full ${auraColors[0]} blur-3xl transition-colors duration-700`;
-  if (aura2) aura2.className = `pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 rounded-full ${auraColors[1]} blur-3xl transition-colors duration-700`;
-
-  const today = daily[0];
-  const pills = [];
-  if (today) pills.push(`H: ${today.max}° · L: ${today.min}°`);
-  if (weatherData?.humidity) pills.push(`Humidity ${weatherData.humidity}%`);
-  if (weatherData?.wind) pills.push(`Wind ${weatherData.wind} mph`);
-  telemetryEl.innerHTML = pills.map((p) => `
-    <span class="px-2.5 py-1 rounded-full bg-black/30 border border-white/10 font-medium tabular-nums">${esc(p)}</span>
-  `).join('');
-
-  const weekMin = Math.min(...daily.map((d) => d.min));
-  const weekMax = Math.max(...daily.map((d) => d.max));
-  const span = Math.max(1, weekMax - weekMin);
-
-  gridEl.innerHTML = daily.map((d, idx) => {
-    const isToday = idx === 0;
-    const leftPct = Math.round(((d.min - weekMin) / span) * 100);
-    const widthPct = Math.max(18, Math.round(((d.max - d.min) / span) * 100));
-    const clampedWidth = Math.min(100 - leftPct, widthPct);
-
-    return `
-      <div
-        class="group/wday relative rounded-2xl p-3 sm:p-3.5 border backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 animate-fadeUp ${
-          isToday
-            ? 'bg-gradient-to-b from-white/18 to-sky-500/12 border-sky-300/40 shadow-lg shadow-sky-950/40'
-            : 'bg-white/[0.06] hover:bg-white/[0.12] border-white/12 hover:border-white/25'
-        }"
-        style="animation-delay: ${idx * 45}ms;"
-      >
-        <div class="flex items-center justify-between gap-1">
-          <div>
-            <div class="text-xs font-bold tracking-wide ${isToday ? 'text-sky-200' : 'text-white'}">${esc(d.dayLabel)}</div>
-            <div class="text-[10px] text-white/50">${esc(d.dateLabel)}</div>
-          </div>
-          ${d.precip > 0 ? `
-            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-500/20 border border-sky-400/30 text-sky-200 tabular-nums">${d.precip}%</span>
-          ` : ''}
-        </div>
-
-        <div class="my-2.5 flex items-center justify-center transition-transform duration-300 group-hover/wday:scale-110">
-          ${getAnimatedWeatherSvg(d.code, 'w-10 h-10')}
-        </div>
-
-        <div class="text-[10px] text-center text-white/65 truncate mb-2">${esc(d.desc)}</div>
-
-        <div class="space-y-1">
-          <div class="relative h-1.5 w-full rounded-full bg-black/40 overflow-hidden">
-            <div
-              class="absolute top-0 bottom-0 rounded-full bg-gradient-to-r from-sky-400 via-amber-300 to-orange-400 origin-left animate-weatherBarGrow"
-              style="left: ${leftPct}%; width: ${clampedWidth}%; animation-delay: ${120 + idx * 45}ms;"
-            ></div>
-          </div>
-          <div class="flex items-center justify-between text-xs tabular-nums">
-            <span class="text-white/55 font-medium">${d.min}°</span>
-            <span class="text-white font-bold">${d.max}°</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
+  if (aura1 && aura2) {
+    if (isNight) {
+      aura1.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-indigo-400/20 blur-3xl transition-colors duration-700';
+      aura2.className = 'pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-sky-500/15 blur-3xl transition-colors duration-700';
+    } else if (sceneType === 'rain' || sceneType === 'storm') {
+      aura1.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-sky-400/20 blur-3xl transition-colors duration-700';
+      aura2.className = 'pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-indigo-400/15 blur-3xl transition-colors duration-700';
+    } else {
+      aura1.className = 'pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-amber-400/18 blur-3xl transition-colors duration-700';
+      aura2.className = 'pointer-events-none absolute -bottom-24 -left-24 w-64 h-64 rounded-full bg-sky-400/15 blur-3xl transition-colors duration-700';
+    }
+  }
 }
 
-export function setWeatherPanelExpanded(expanded) {
-  appStore.weatherPanelExpanded = expanded;
-  const wrap = document.getElementById('sevenDayGridWrap');
-  const label = document.getElementById('toggleWeatherLabel');
-  const chev = document.getElementById('toggleWeatherChevron');
-  const btn = document.getElementById('toggleWeatherForecastBtn');
-  if (!wrap) return;
-  wrap.classList.toggle('hidden', !expanded);
-  if (label) label.textContent = expanded ? 'Hide' : 'Show 7-Day';
-  if (chev) chev.classList.toggle('rotate-180', expanded);
-  if (btn) btn.setAttribute('aria-expanded', String(expanded));
+function formatForecastDateLabel(isoDateStr, idx) {
+  if (idx === 0) return 'Today';
+  const parts = String(isoDateStr || '').split('-').map(Number);
+  if (parts.length !== 3) return `Day ${idx + 1}`;
+  const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function renderSevenDayForecastData(locationLabel, forecast) {
+  const locTag = document.getElementById('weatherLocationTag');
+  const tempLarge = document.getElementById('weatherCurrentTempLarge');
+  const condEl = document.getElementById('weatherCurrentCondition');
+  const pillsEl = document.getElementById('weatherTelemetryPills');
+  const gridEl = document.getElementById('sevenDayGrid');
+
+  const isNight = Number(forecast.isDay) === 0;
+  const currentMeta = interpretWmoWeather(forecast.currentCode, forecast.isDay);
+
+  if (locTag) locTag.textContent = locationLabel;
+  if (tempLarge) tempLarge.textContent = `${Math.round(forecast.currentTemp)}°F`;
+  if (condEl) condEl.textContent = currentMeta.label;
+
+  applyWeatherSceneTheme(currentMeta.scene, isNight);
+
+  if (pillsEl) {
+    const modeBadge = isNight
+      ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-500/25 border border-indigo-300/35 text-indigo-100 font-semibold">${ICONS.moon}<span>Night</span></span>`
+      : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-300/35 text-amber-100 font-semibold">${ICONS.sun}<span>Day</span></span>`;
+
+    pillsEl.innerHTML = `
+      ${modeBadge}
+      <span class="px-2.5 py-1 rounded-full bg-black/30 border border-white/12 tabular-nums">Wind ${Math.round(forecast.windMph)} mph</span>
+      ${Number.isFinite(forecast.humidity) ? `<span class="px-2.5 py-1 rounded-full bg-black/30 border border-white/12 tabular-nums">Humidity ${Math.round(forecast.humidity)}%</span>` : ''}
+    `;
+  }
+
+  if (gridEl && Array.isArray(forecast.daily)) {
+    const allHighs = forecast.daily.map((d) => d.max);
+    const allLows = forecast.daily.map((d) => d.min);
+    const weekMin = Math.min(...allLows);
+    const weekMax = Math.max(...allHighs);
+    const span = Math.max(1, weekMax - weekMin);
+
+    gridEl.innerHTML = forecast.daily.map((d, idx) => {
+      const meta = interpretWmoWeather(d.code, 1);
+      const leftPct = Math.max(0, Math.min(85, Math.round(((d.min - weekMin) / span) * 100)));
+      const widthPct = Math.max(15, Math.min(100 - leftPct, Math.round(((d.max - d.min) / span) * 100)));
+
+      return `
+        <div class="rounded-2xl bg-black/30 hover:bg-black/45 border ${idx === 0 ? 'border-sky-400/40 bg-white/[0.08]' : 'border-white/10'} p-3 transition-all duration-200 flex flex-col justify-between gap-2">
+          <div class="flex items-center justify-between gap-1.5">
+            <span class="text-[11px] font-bold ${idx === 0 ? 'text-sky-200' : 'text-white/85'} truncate">${esc(formatForecastDateLabel(d.date, idx))}</span>
+            <span class="text-amber-300 shrink-0">${ICONS[meta.icon] || ICONS.sun}</span>
+          </div>
+
+          <div class="text-[10px] text-white/60 truncate">${esc(meta.label)}</div>
+
+          <div class="space-y-1 pt-0.5">
+            <div class="flex items-center justify-between text-xs font-bold tabular-nums">
+              <span class="text-white/55 font-medium">${Math.round(d.min)}°</span>
+              <span class="text-white">${Math.round(d.max)}°</span>
+            </div>
+            <div class="relative h-1.5 w-full rounded-full bg-white/12 overflow-hidden">
+              <div class="absolute top-0 bottom-0 rounded-full bg-gradient-to-r from-sky-400 to-orange-400 animate-weatherBarGrow origin-left" style="left: ${leftPct}%; width: ${widthPct}%;"></div>
+            </div>
+            ${d.precipProb > 0 ? `<div class="text-[10px] text-sky-300/90 tabular-nums">Rain ${d.precipProb}%</div>` : `<div class="text-[10px] text-white/35">Dry</div>`}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+async function fetchForecastForCoordinates(lat, lng) {
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const cached = weatherForecastCache.get(key);
+  if (cached && Date.now() - cached.fetchedAt < 15 * 60 * 1000) {
+    return cached.data;
+  }
+
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current_weather=true&hourly=relative_humidity_2m&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&windspeed_unit=mph&timezone=auto&forecast_days=7`;
+  const raw = await fetchJsonSafe(url, 6000);
+  if (!raw || !raw.current_weather || !raw.daily) return null;
+
+  const currentTime = raw.current_weather.time;
+  let humidity = null;
+  if (Array.isArray(raw.hourly?.time) && Array.isArray(raw.hourly?.relative_humidity_2m)) {
+    const hourPrefix = String(currentTime || '').slice(0, 13);
+    const hIdx = raw.hourly.time.findIndex((t) => String(t).startsWith(hourPrefix));
+    if (hIdx >= 0) humidity = raw.hourly.relative_humidity_2m[hIdx];
+  }
+
+  const daily = (raw.daily.time || []).map((date, idx) => ({
+    date,
+    code: raw.daily.weathercode?.[idx] ?? 0,
+    max: raw.daily.temperature_2m_max?.[idx] ?? 72,
+    min: raw.daily.temperature_2m_min?.[idx] ?? 52,
+    precipProb: raw.daily.precipitation_probability_max?.[idx] ?? 0
+  }));
+
+  const parsed = {
+    currentTemp: raw.current_weather.temperature,
+    windMph: raw.current_weather.windspeed ?? 0,
+    currentCode: raw.current_weather.weathercode ?? 0,
+    isDay: raw.current_weather.is_day ?? 1,
+    humidity,
+    daily
+  };
+
+  weatherForecastCache.set(key, { fetchedAt: Date.now(), data: parsed });
+  return parsed;
 }
 
 export async function syncLiveWeatherForActiveDay() {
-  const day = appStore.state.days[appStore.activeCarouselIndex];
-  if (!day) return;
+  const seq = ++activeWeatherSeq;
+  const activeDay = appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0];
+  const chosenLocation = String(activeDay?.location || 'Riverside, CA').trim();
 
-  renderSevenDayWeather(day, null);
-  const live = await fetchLiveWeatherForLocation(day.location);
-  if (live) {
-    day.temp = live.temp;
-    if (appStore.state.days[appStore.activeCarouselIndex]?.id === day.id) {
-      renderSevenDayWeather(day, live);
+  const locTag = document.getElementById('weatherLocationTag');
+  const condEl = document.getElementById('weatherCurrentCondition');
+  if (locTag) locTag.textContent = chosenLocation;
+  if (condEl && (!activeDay?.temp || activeDay.temp === '--°F')) {
+    condEl.textContent = `Loading forecast for ${chosenLocation}...`;
+  }
+
+  const geo = await resolveExactWeatherLocation(chosenLocation);
+  if (seq !== activeWeatherSeq) return;
+
+  if (!geo) {
+    if (condEl) condEl.textContent = `Weather unavailable for "${chosenLocation}"`;
+    return;
+  }
+
+  const forecast = await fetchForecastForCoordinates(geo.lat, geo.lng);
+  if (seq !== activeWeatherSeq) return;
+
+  if (!forecast) {
+    if (condEl) condEl.textContent = 'Live forecast temporarily offline';
+    return;
+  }
+
+  const roundedTemp = `${Math.round(forecast.currentTemp)}°F`;
+  if (activeDay && activeDay.temp !== roundedTemp) {
+    activeDay.temp = roundedTemp;
+    renderForecastStrip();
+    renderCarousel();
+  }
+
+  renderSevenDayForecastData(chosenLocation, forecast);
+}
+
+export async function prefetchAllDaysWeather() {
+  const days = appStore.state?.days || [];
+  let changed = false;
+
+  for (const day of days) {
+    const loc = String(day?.location || '').trim();
+    if (!loc) continue;
+    const geo = await resolveExactWeatherLocation(loc);
+    if (!geo) continue;
+    const forecast = await fetchForecastForCoordinates(geo.lat, geo.lng);
+    if (forecast && Number.isFinite(forecast.currentTemp)) {
+      const nextTemp = `${Math.round(forecast.currentTemp)}°F`;
+      if (day.temp !== nextTemp) {
+        day.temp = nextTemp;
+        changed = true;
+      }
     }
+  }
+
+  if (changed) {
     renderForecastStrip();
     renderCarousel();
   }
 }
 
-export async function prefetchAllDaysWeather() {
-  await Promise.all(
-    appStore.state.days.map(async (d) => {
-      const live = await fetchLiveWeatherForLocation(d.location);
-      if (live) d.temp = live.temp;
-    })
-  );
-  syncLiveWeatherForActiveDay();
+/**
+ * ============================================================================
+ * BACKGROUND ROUTE & DISTANCE SYNC
+ * ============================================================================
+ */
+
+export async function refreshTripTravelRoutes() {
+  await computeTripTravelLegs(appStore.state, () => {
+    plannerHooks.renderItinerary();
+  });
+  plannerHooks.renderItinerary();
 }
 
 /**
- * Core Dashboard Renderers: Readiness Stats, Hero, Forecast Strip, 3D Carousel
+ * ============================================================================
+ * HERO, FORECAST STRIP & 3D SPOTLIGHT CAROUSEL RENDERERS
+ * ============================================================================
  */
-export function getReadinessStats() {
-  let total = 0;
-  let done = 0;
-  appStore.state.checklists.forEach((g) => {
-    total += g.items.length;
-    done += g.items.filter((i) => i.done).length;
-  });
-  const percent = total === 0 ? 0 : Math.round((done / total) * 100);
-  return { done, total, percent };
-}
 
 export function renderHero() {
-  document.getElementById('heroTitle').textContent = appStore.state.meta.title;
-  document.getElementById('heroSubtitle').textContent = appStore.state.meta.subtitle;
+  const state = appStore.state;
+  const titleEl = document.getElementById('heroTitle');
+  const subEl = document.getElementById('heroSubtitle');
+  const tripsBadge = document.getElementById('tripsCountBadge');
 
-  const countBadge = document.getElementById('tripsCountBadge');
-  if (countBadge) countBadge.textContent = String(appStore.trips.length);
+  if (titleEl) titleEl.textContent = state.meta.title || 'Trip Itinerary';
+  if (subEl) subEl.textContent = state.meta.subtitle || '';
+  if (tripsBadge) tripsBadge.textContent = String(appStore.trips.length);
 
   const { percent } = getReadinessStats();
-  document.getElementById('heroProgressPct').textContent = `${percent}%`;
   const ring = document.getElementById('heroProgressRing');
-  const circumference = 100.53;
-  ring.style.strokeDashoffset = String(circumference - (percent / 100) * circumference);
+  const pctEl = document.getElementById('heroProgressPct');
+  if (ring) {
+    const circumference = 100.53;
+    ring.style.strokeDashoffset = String(circumference - (percent / 100) * circumference);
+  }
+  if (pctEl) pctEl.textContent = `${percent}%`;
 }
 
 export function renderForecastStrip() {
   const strip = document.getElementById('forecastStrip');
-  const dayCards = appStore.state.days.map((day, idx) => {
+  if (!strip) return;
+  const days = appStore.state.days || [];
+
+  strip.innerHTML = days.map((day, idx) => {
     const isActive = idx === appStore.activeCarouselIndex;
     return `
       <button
         type="button"
         data-strip-idx="${idx}"
-        class="group relative rounded-2xl p-3.5 text-left transition-all duration-300 backdrop-blur-2xl border cursor-pointer ${
+        class="text-left rounded-2xl p-3 border backdrop-blur-2xl transition-all duration-200 cursor-pointer ${
           isActive
-            ? 'bg-white/20 border-white/40 shadow-[0_12px_36px_rgba(0,0,0,0.35)] scale-[1.02]'
-            : 'bg-white/10 hover:bg-white/16 border-white/15 hover:border-white/30'
+            ? 'bg-white/18 border-sky-400/55 shadow-lg shadow-sky-500/15 scale-[1.02]'
+            : 'bg-[#16171d]/65 hover:bg-white/12 border-white/12'
         }"
       >
         <div class="flex items-center justify-between gap-1">
-          <span class="text-lg sm:text-xl font-semibold text-white tabular-nums">${esc(day.temp || '72°F')}</span>
-          <span class="w-2 h-2 rounded-full ${isActive ? 'bg-sky-300 shadow-[0_0_8px_rgba(125,211,252,0.9)]' : 'bg-white/25'}"></span>
+          <span class="text-sm sm:text-base font-bold text-white tabular-nums">${esc(day.temp || '--°F')}</span>
+          <span class="w-2 h-2 rounded-full ${isActive ? 'bg-sky-400' : 'bg-orange-400/75'}"></span>
         </div>
-        <div class="mt-2.5">
-          <div class="text-xs font-bold tracking-wider uppercase text-white/95">${esc(day.shortDay || `DAY ${idx + 1}`)}</div>
-          <div class="text-[11px] text-white/65 truncate">${esc(day.location || day.shortDate || '')}</div>
-        </div>
+        <div class="text-[11px] font-bold text-sky-200 mt-1 truncate">${esc(day.shortDay)} · ${esc(day.shortDate)}</div>
+        <div class="text-[11px] text-white/65 truncate mt-0.5">${esc(day.location || '')}</div>
       </button>
     `;
   }).join('');
 
-  const metaCards = [
-    { label: 'TRIP LENGTH', value: appStore.state.meta.tripLength, sub: 'California' },
-    { label: 'DEPARTURE', value: appStore.state.meta.firstDeparture, sub: 'First Leg' },
-    { label: 'HOTEL PLAN', value: appStore.state.meta.hotelPlan, sub: '2 Stays' }
-  ].map((m) => `
-    <div class="rounded-2xl p-3.5 bg-black/25 backdrop-blur-2xl border border-white/10 flex flex-col justify-between">
-      <div class="text-[10px] font-bold uppercase tracking-wider text-white/50">${esc(m.label)}</div>
-      <div class="mt-2">
-        <div class="text-xs sm:text-sm font-semibold text-white truncate">${esc(m.value)}</div>
-        <div class="text-[11px] text-white/55 truncate">${esc(m.sub)}</div>
-      </div>
-    </div>
-  `).join('');
-
-  strip.innerHTML = dayCards + metaCards;
   strip.querySelectorAll('[data-strip-idx]').forEach((btn) => {
-    btn.addEventListener('click', () => setActiveCarouselIndex(Number(btn.dataset.stripIdx)));
+    btn.addEventListener('click', () => {
+      setActiveCarouselIndex(Number(btn.dataset.stripIdx));
+    });
   });
 }
 
-export function setActiveCarouselIndex(nextIdx) {
-  if (appStore.state.days.length === 0) return;
-  appStore.activeCarouselIndex = (nextIdx + appStore.state.days.length) % appStore.state.days.length;
-  updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex]);
-  renderHero();
+export function setActiveCarouselIndex(index) {
+  const days = appStore.state.days || [];
+  if (days.length === 0) return;
+  const wrapped = ((index % days.length) + days.length) % days.length;
+  appStore.activeCarouselIndex = wrapped;
+
+  updateBackdropForDay(days[wrapped]);
   renderForecastStrip();
   renderCarousel();
   plannerHooks.renderItinerary();
@@ -1636,224 +1480,202 @@ export function setActiveCarouselIndex(nextIdx) {
 
 export function renderCarousel() {
   const track = document.getElementById('carouselTrack');
-  const dots = document.getElementById('carouselDots');
-  const counter = document.getElementById('carouselCounter');
+  const dotsEl = document.getElementById('carouselDots');
+  const counterEl = document.getElementById('carouselCounter');
+  if (!track) return;
 
-  if (appStore.state.days.length === 0) {
-    track.dataset.dayIds = '';
-    track.innerHTML = `<div class="rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/15 px-8 py-12 text-sm text-white/75">No days yet. Click "Add Day" above.</div>`;
-    dots.innerHTML = '';
-    counter.textContent = '0 / 0';
+  const days = appStore.state.days || [];
+  if (days.length === 0) {
+    track.innerHTML = `<div class="text-xs text-white/50">No days yet. Click "Add Day" above.</div>`;
+    if (counterEl) counterEl.textContent = '0 / 0';
+    if (dotsEl) dotsEl.innerHTML = '';
     return;
   }
 
-  if (appStore.activeCarouselIndex >= appStore.state.days.length) appStore.activeCarouselIndex = 0;
-  counter.textContent = `${appStore.activeCarouselIndex + 1} / ${appStore.state.days.length}`;
+  const activeIdx = Math.max(0, Math.min(days.length - 1, appStore.activeCarouselIndex));
+  appStore.activeCarouselIndex = activeIdx;
+  if (counterEl) counterEl.textContent = `${activeIdx + 1} / ${days.length}`;
 
-  const total = appStore.state.days.length;
-  const vw = window.innerWidth;
-  const isMobile = vw < 640;
-  const canHoverTilt = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  const nextDayIds = appStore.state.days.map((d) => d.id).join('|');
-  const needsRebuild = track.dataset.dayIds !== nextDayIds;
+  const isMobile = window.innerWidth < 640;
+  const xSpread = isMobile ? 165 : 275;
 
-  if (needsRebuild) {
-    track.dataset.dayIds = nextDayIds;
-    track.innerHTML = appStore.state.days.map((day, idx) => `
+  track.innerHTML = days.map((day, idx) => {
+    const offset = idx - activeIdx;
+    const absOffset = Math.abs(offset);
+    const isCenter = offset === 0;
+    const tx = offset * xSpread;
+    const tz = -absOffset * 130;
+    const ry = Math.max(-28, Math.min(28, -offset * 14));
+    const scale = isCenter ? 1 : Math.max(0.76, 1 - absOffset * 0.11);
+    const opacity = absOffset > 2 ? 0 : isCenter ? 1 : Math.max(0.45, 0.85 - absOffset * 0.2);
+    const zIndex = 30 - absOffset;
+    const photoUrl = getCardPhotoUrl(day);
+
+    return `
       <div
-        data-carousel-card="${idx}"
-        data-day-id="${esc(day.id)}"
-        data-is-center="0"
-        class="group absolute w-[min(84vw,300px)] sm:w-[440px] h-[285px] sm:h-[330px] rounded-[28px] overflow-hidden border border-white/25 bg-[#12141c] shadow-[0_25px_70px_rgba(0,0,0,0.65)] transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] [transform-style:preserve-3d] will-change-transform"
+        data-card-idx="${idx}"
+        style="transform: translate3d(${tx}px, 0, ${tz}px) rotateY(${ry}deg) scale(${scale}); opacity: ${opacity}; z-index: ${zIndex};"
+        class="group/card absolute w-[275px] sm:w-[370px] h-[270px] sm:h-[315px] rounded-3xl overflow-hidden border ${
+          isCenter ? 'border-white/35 shadow-[0_24px_60px_rgba(0,0,0,0.75)]' : 'border-white/15 shadow-2xl cursor-pointer'
+        } transition-all duration-500 ease-out select-none bg-[#151821]"
       >
-        <div data-parallax-bg class="absolute -inset-4 transition-transform duration-300 ease-out pointer-events-none">
-          <img
-            data-card-photo
-            src="${esc(getCardPhotoUrl(day))}"
-            alt="${esc(day.location || day.title)}"
-            onerror="this.onerror=null;this.src='https://placehold.co/900x600/181920/ffffff?text=${encodeURIComponent(day.location || 'Destination')}';"
-            class="w-full h-full object-cover object-center"
-          />
-          <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/20"></div>
-        </div>
+        <img
+          src="${esc(photoUrl)}"
+          alt="${esc(day.location || day.title)}"
+          onerror="this.onerror=null;this.src='https://placehold.co/800x600/151821/94a3b8?text=Destination';"
+          class="w-full h-full object-cover object-center transition-transform duration-700 ${isCenter ? 'group-hover/card:scale-105' : ''}"
+        />
+        <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/20"></div>
 
-        <div data-glare class="absolute inset-0 pointer-events-none opacity-0 transition-opacity duration-300" style="background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.28), transparent 60%);"></div>
-
-        <div data-parallax-fg class="relative z-10 h-full p-5 sm:p-7 flex flex-col justify-between transition-transform duration-300 ease-out">
-          <div class="flex items-start justify-between gap-2">
-            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span data-card-badge class="px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-black/45 border border-white/20 backdrop-blur-xl text-white">
-                ${esc(day.shortDay || `Day ${idx + 1}`)} · ${esc(day.shortDate || '')}
-              </span>
-              <span data-card-temp class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/15 border border-white/20 backdrop-blur-xl text-orange-100">
-                ${esc(day.temp || '72°F')}
-              </span>
-            </div>
-
-            <div class="flex items-center gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200 shrink-0">
-              <button type="button" data-card-edit="${esc(day.id)}" title="Edit Day" class="w-8 h-8 rounded-full bg-black/50 hover:bg-white/25 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white transition-colors cursor-pointer">
+        <!-- Top Card Pills -->
+        <div class="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between gap-2">
+          <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-black/50 backdrop-blur-xl border border-white/20 text-white">
+            ${esc(day.shortDay)} · ${esc(day.shortDate)}
+          </span>
+          <div class="flex items-center gap-1.5">
+            <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-500/25 backdrop-blur-xl border border-sky-300/35 text-sky-100 tabular-nums">
+              ${esc(day.temp || '--°F')}
+            </span>
+            ${isCenter ? `
+              <button type="button" data-card-edit="${esc(day.id)}" title="Edit Day" class="p-1.5 rounded-full bg-black/50 hover:bg-white/25 backdrop-blur-xl border border-white/20 text-white transition-all cursor-pointer">
                 ${ICONS.edit}
               </button>
-              <button type="button" data-card-delete="${esc(day.id)}" title="Delete Day" class="w-8 h-8 rounded-full bg-rose-600/80 hover:bg-rose-500 border border-white/20 flex items-center justify-center text-white transition-colors cursor-pointer">
-                ${ICONS.trash}
-              </button>
-            </div>
+            ` : ''}
           </div>
+        </div>
 
-          <div class="space-y-2.5">
-            <div>
-              <div data-card-location class="text-[11px] font-semibold uppercase tracking-widest text-sky-300">${esc(day.location || 'California')}</div>
-              <h3 data-card-title class="text-lg sm:text-2xl font-bold text-white tracking-tight leading-snug drop-shadow">${esc(day.title)}</h3>
-              <p data-card-subtitle class="text-xs sm:text-sm text-white/80 line-clamp-2 mt-0.5">${esc(day.subtitle)}</p>
-            </div>
-
-            <div class="pt-2.5 border-t border-white/15 flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2 text-xs text-white/85 min-w-0">
-                <span data-card-tag class="px-2.5 py-0.5 rounded-full bg-white/15 border border-white/15 text-[11px] font-medium truncate">${esc(day.tag || 'Itinerary')}</span>
-                <span data-card-stops class="text-white/60 shrink-0">${day.events.length} stops</span>
-              </div>
-              <button type="button" data-card-add-stop="${esc(day.id)}" class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/15 hover:bg-sky-500/35 border border-white/25 text-xs font-semibold text-white transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-pointer shrink-0">
-                ${ICONS.plus}
-                <span>Stop</span>
-              </button>
-            </div>
+        <!-- Bottom Destination Details -->
+        <div class="absolute bottom-4 left-4 right-4 space-y-1">
+          <div class="flex items-center gap-1.5 text-[11px] font-semibold text-orange-300">
+            <span>${ICONS.pin}</span>
+            <span class="truncate">${esc(day.location || '')}</span>
+          </div>
+          <h3 class="text-base sm:text-lg font-bold text-white leading-snug line-clamp-1">${esc(day.title)}</h3>
+          <p class="text-xs text-white/75 line-clamp-1">${esc(day.subtitle || '')}</p>
+          <div class="pt-1 flex items-center justify-between text-[11px] text-white/65">
+            <span>${day.events?.length || 0} scheduled stop${(day.events?.length || 0) === 1 ? '' : 's'}</span>
+            ${day.tag ? `<span class="px-2 py-0.5 rounded-full bg-white/15 text-white/90 font-medium">${esc(day.tag)}</span>` : ''}
           </div>
         </div>
       </div>
+    `;
+  }).join('');
+
+  track.querySelectorAll('[data-card-idx]').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('[data-card-edit]')) return;
+      const idx = Number(card.dataset.cardIdx);
+      if (idx !== appStore.activeCarouselIndex) {
+        setActiveCarouselIndex(idx);
+      }
+    });
+  });
+
+  track.querySelectorAll('[data-card-edit]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      plannerHooks.openDayModal(btn.dataset.cardEdit);
+    });
+  });
+
+  if (dotsEl) {
+    dotsEl.innerHTML = days.map((_, idx) => `
+      <button
+        type="button"
+        data-dot-idx="${idx}"
+        aria-label="Go to Day ${idx + 1}"
+        class="h-2 rounded-full transition-all duration-300 cursor-pointer ${
+          idx === activeIdx ? 'w-7 bg-gradient-to-r from-orange-400 to-sky-400' : 'w-2 bg-white/25 hover:bg-white/50'
+        }"
+      ></button>
     `).join('');
 
-    track.querySelectorAll('[data-carousel-card]').forEach((card) => {
-      const bg = card.querySelector('[data-parallax-bg]');
-      const fg = card.querySelector('[data-parallax-fg]');
-      const glare = card.querySelector('[data-glare]');
-
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('button')) return;
-        if (card.dataset.isCenter !== '1') {
-          setActiveCarouselIndex(Number(card.dataset.carouselCard));
-        }
-      });
-
-      card.addEventListener('mousemove', (e) => {
-        if (!canHoverTilt || card.dataset.isCenter !== '1') return;
-        const rect = card.getBoundingClientRect();
-        const px = (e.clientX - rect.left) / rect.width;
-        const py = (e.clientY - rect.top) / rect.height;
-        const tiltX = (0.5 - py) * 14;
-        const tiltY = (px - 0.5) * 16;
-
-        card.style.transition = 'transform 0.08s ease-out';
-        card.style.transform = `translate3d(0px, 0, 46px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale(1.02)`;
-        if (bg) bg.style.transform = `translate3d(${(px - 0.5) * -18}px, ${(py - 0.5) * -14}px, 0) scale(1.06)`;
-        if (fg) fg.style.transform = `translate3d(${(px - 0.5) * 10}px, ${(py - 0.5) * 8}px, 28px)`;
-        if (glare) {
-          glare.style.opacity = '1';
-          glare.style.background = `radial-gradient(circle at ${px * 100}% ${py * 100}%, rgba(255,255,255,0.28), transparent 58%)`;
-        }
-      });
-
-      card.addEventListener('mouseleave', () => {
-        if (!canHoverTilt || card.dataset.isCenter !== '1') return;
-        card.style.transition = 'transform 0.45s cubic-bezier(0.22,1,0.36,1)';
-        card.style.transform = `translate3d(0px, 0, 40px) rotateX(0deg) rotateY(0deg) scale(1)`;
-        if (bg) bg.style.transform = `translate3d(0,0,0) scale(1)`;
-        if (fg) fg.style.transform = `translate3d(0,0,0)`;
-        if (glare) glare.style.opacity = '0';
-      });
-    });
-
-    track.querySelectorAll('[data-card-edit]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        plannerHooks.openDayModal(btn.dataset.cardEdit);
-      });
-    });
-    track.querySelectorAll('[data-card-delete]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        plannerHooks.confirmDeleteDay(btn.dataset.cardDelete);
-      });
-    });
-    track.querySelectorAll('[data-card-add-stop]').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        plannerHooks.openEventModal(btn.dataset.cardAddStop, null);
-      });
+    dotsEl.querySelectorAll('[data-dot-idx]').forEach((dot) => {
+      dot.addEventListener('click', () => setActiveCarouselIndex(Number(dot.dataset.dotIdx)));
     });
   }
+}
 
-  const mobileStepX = Math.round(Math.min(220, Math.max(150, vw * 0.56)));
+/**
+ * ============================================================================
+ * STATIC ICON HYDRATION & LOCAL / CLOUD PERSISTENCE
+ * ============================================================================
+ */
 
-  track.querySelectorAll('[data-carousel-card]').forEach((card, idx) => {
-    const day = appStore.state.days[idx];
-    if (!day) return;
-
-    let offset = idx - appStore.activeCarouselIndex;
-    if (offset > total / 2) offset -= total;
-    if (offset < -total / 2) offset += total;
-
-    const absOff = Math.abs(offset);
-    const isCenter = offset === 0;
-    const isHidden = absOff > 1;
-    const xShift = offset * (isMobile ? mobileStepX : 340);
-    const zShift = isCenter ? (isMobile ? 20 : 40) : (isMobile ? -120 * absOff : -150 * absOff);
-    const rotY = offset * (isMobile ? -14 : -26);
-    const scale = isCenter ? 1 : Math.max(0.76, 1 - absOff * 0.14);
-    const opacity = isHidden ? 0 : (isCenter ? 1 : 0.62);
-    const zIndex = 30 - absOff * 10;
-
-    card.dataset.carouselCard = String(idx);
-    card.dataset.isCenter = isCenter ? '1' : '0';
-
-    card.style.transition = '';
-    card.style.transform = `translate3d(${xShift}px, 0, ${zShift}px) rotateY(${rotY}deg) scale(${scale})`;
-    card.style.opacity = String(opacity);
-    card.style.visibility = isHidden ? 'hidden' : 'visible';
-    card.style.zIndex = String(zIndex);
-    card.style.pointerEvents = isHidden ? 'none' : 'auto';
-
-    card.classList.toggle('ring-1', isCenter);
-    card.classList.toggle('ring-white/30', isCenter);
-    card.classList.toggle('cursor-pointer', !isCenter);
-    card.classList.toggle('hover:opacity-90', !isCenter);
-
-    if (!isCenter) {
-      const bg = card.querySelector('[data-parallax-bg]');
-      const fg = card.querySelector('[data-parallax-fg]');
-      const glare = card.querySelector('[data-glare]');
-      if (bg) bg.style.transform = `translate3d(0,0,0) scale(1)`;
-      if (fg) fg.style.transform = `translate3d(0,0,0)`;
-      if (glare) glare.style.opacity = '0';
-    }
-
-    const photoEl = card.querySelector('[data-card-photo]');
-    const nextPhoto = getCardPhotoUrl(day);
-    if (photoEl && photoEl.getAttribute('src') !== nextPhoto) {
-      photoEl.setAttribute('src', nextPhoto);
-    }
-    const badgeEl = card.querySelector('[data-card-badge]');
-    if (badgeEl) badgeEl.textContent = `${day.shortDay || `Day ${idx + 1}`} · ${day.shortDate || ''}`;
-    const tempEl = card.querySelector('[data-card-temp]');
-    if (tempEl) tempEl.textContent = day.temp || '72°F';
-    const locEl = card.querySelector('[data-card-location]');
-    if (locEl) locEl.textContent = day.location || 'California';
-    const titleEl = card.querySelector('[data-card-title]');
-    if (titleEl) titleEl.textContent = day.title;
-    const subEl = card.querySelector('[data-card-subtitle]');
-    if (subEl) subEl.textContent = day.subtitle;
-    const tagEl = card.querySelector('[data-card-tag]');
-    if (tagEl) tagEl.textContent = day.tag || 'Itinerary';
-    const stopsEl = card.querySelector('[data-card-stops]');
-    if (stopsEl) stopsEl.textContent = `${day.events.length} stops`;
+export function renderStaticIcons() {
+  const map = {
+    editHeroInlineBtn: ICONS.edit,
+    addDayIcon: ICONS.plus,
+    addNewTripIcon: ICONS.newTrip,
+    switchTripsIcon: ICONS.trips,
+    savePdfIcon: ICONS.save,
+    prevIcon: ICONS.chevronLeft,
+    nextIcon: ICONS.chevronRight,
+    manageCategoriesIcon: ICONS.categories,
+    copyNotesIcon: ICONS.copy,
+    modalCloseBtn: ICONS.close,
+    toggleWeatherChevron: ICONS.chevronDown
+  };
+  Object.entries(map).forEach(([id, svg]) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = svg;
   });
+}
 
-  dots.innerHTML = appStore.state.days.map((d, idx) => `
-    <button type="button" data-dot-idx="${idx}" aria-label="Go to Day ${idx + 1}" class="h-2 rounded-full transition-all duration-300 cursor-pointer ${
-      idx === appStore.activeCarouselIndex ? 'w-8 bg-gradient-to-r from-orange-400 to-sky-400' : 'w-2 bg-white/25 hover:bg-white/50'
-    }"></button>
-  `).join('');
+const LOCAL_TRIPS_STORAGE_KEY = 'spatial_tripos_saved_trips_v1';
+let saveDebounceTimer = null;
 
-  dots.querySelectorAll('[data-dot-idx]').forEach((dot) => {
-    dot.addEventListener('click', () => setActiveCarouselIndex(Number(dot.dataset.dotIdx)));
-  });
+function setSyncStatus(label, isReady = true) {
+  const txt = document.getElementById('syncStatusText');
+  const dot = document.getElementById('syncStatusDot');
+  if (txt) {
+    const span = txt.querySelector('span:last-child');
+    if (span) span.textContent = label;
+  }
+  if (dot) {
+    dot.className = isReady
+      ? 'w-1.5 h-1.5 rounded-full bg-emerald-400'
+      : 'w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse';
+  }
+}
+
+export function scheduleCloudSave() {
+  setSyncStatus('Saving...', false);
+  clearTimeout(saveDebounceTimer);
+  saveDebounceTimer = setTimeout(() => {
+    try {
+      const payload = {
+        activeTripId: appStore.activeTripId,
+        trips: appStore.trips
+      };
+      window.localStorage?.setItem(LOCAL_TRIPS_STORAGE_KEY, JSON.stringify(payload));
+      setSyncStatus('Saved locally', true);
+    } catch (err) {
+      setSyncStatus('Local save unavailable', true);
+    }
+  }, 350);
+}
+
+export function initCloudSync() {
+  try {
+    const raw = window.localStorage?.getItem(LOCAL_TRIPS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.trips) && parsed.trips.length > 0) {
+        appStore.trips = parsed.trips;
+        appStore.activeTripId = parsed.activeTripId || parsed.trips[0].id;
+        syncActiveTripRef();
+        updateBackdropForDay(appStore.state.days[0]);
+        plannerHooks.renderAll();
+      }
+    }
+    setSyncStatus('Saved locally', true);
+  } catch (err) {
+    setSyncStatus('Ready', true);
+  }
+
+  // Always sync the 7-Day Forecast for the active trip's chosen Day 1 location right after loading
+  syncLiveWeatherForActiveDay();
+  prefetchAllDaysWeather();
+  refreshTripTravelRoutes();
 }

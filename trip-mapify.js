@@ -28,13 +28,13 @@ export function registerMapifyHooks(overrides = {}) {
 
 /**
  * Map Tile Themes (100% Free, Zero-API-Key Esri Basemaps)
- * - Dark: Dark canvas + cute animated nearby places (restaurants, attractions, restrooms, gas, parking)
- * - Street: Unchanged Esri World Street Map
- * - Basemap: Clean, crisp, pastel Esri World Topographic Map + smart non-overlapping route pills & soft halos
+ * - Compass (dark): Dark canvas + cute animated nearby places (restaurants, attractions, restrooms, gas, parking)
+ * - Street (street): Unchanged Esri World Street Map
+ * - Wayfinder (basemap): Clean, crisp, pastel Esri World Topographic Map + smart non-overlapping route pills & soft halos
  */
 const MAP_TILE_THEMES = {
   dark: {
-    label: 'Dark',
+    label: 'Compass',
     layers: [
       {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
@@ -63,7 +63,7 @@ const MAP_TILE_THEMES = {
     maxZoom: 19
   },
   basemap: {
-    label: 'Basemap',
+    label: 'Wayfinder',
     layers: [
       {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
@@ -87,7 +87,7 @@ const DAY_ROUTE_PALETTE = [
 ];
 
 /**
- * Dark Mode Nearby Place Categories (Cute Custom SVGs, Colors & Animations)
+ * Compass Mode Nearby Place Categories (Cute Custom SVGs, Colors & Animations)
  */
 const DARK_POI_CATEGORIES = {
   restaurant: {
@@ -181,7 +181,7 @@ const mapState = {
   lastMapData: null,
   tourTimer: null,
   isTourPlaying: false,
-  // Dark Mode Nearby POI Discovery State
+  // Compass Mode Nearby POI Discovery State
   activePoiCategories: new Set(['restaurant', 'attraction', 'restroom', 'gas', 'parking']),
   poiCache: new Map(),
   currentPois: [],
@@ -242,7 +242,7 @@ function stopRouteTour(updateBtn = true) {
 }
 
 /**
- * Sync Canvas Theme Classes, Legend Styling & Dark Nearby POI Bar Visibility
+ * Sync Canvas Theme Classes, Legend Styling & Compass Nearby POI Bar Visibility
  */
 function syncThemeChrome() {
   const canvasEl = document.getElementById('mapifyCanvas');
@@ -268,7 +268,7 @@ function syncThemeChrome() {
         <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-600 inline-block rounded-full"></span>Drive</span>
         <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-b-2 border-dotted border-emerald-600 inline-block"></span>Walk</span>
         <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>Fixed</span>
-        <span class="pl-2 border-l border-slate-900/15 text-sky-600 font-bold">Clean Basemap</span>
+        <span class="pl-2 border-l border-slate-900/15 text-sky-600 font-bold">Wayfinder</span>
       `;
     } else {
       legendPill.className = 'pointer-events-none absolute top-3 left-3 z-[400] hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#12151f]/85 backdrop-blur-xl border border-white/15 text-[10px] font-semibold text-white/80 shadow-lg';
@@ -403,7 +403,7 @@ function formatGroupPinLabel(groupStops, showAllDays) {
 
 /**
  * ============================================================================
- * DARK MODE: FAST ZERO-API-KEY NEARBY PLACES ENGINE
+ * COMPASS MODE: FAST ZERO-API-KEY NEARBY PLACES ENGINE
  * (Esri World Places + Wikipedia GeoSearch + Photon OSM — Zero Overpass 429s)
  * ============================================================================
  */
@@ -471,7 +471,6 @@ async function fetchEsriPlacesForAnchor(anchor, catMeta, box) {
     const name = String(attrs.PlaceName || cand.address || '').split(',')[0].trim();
     if (!name) return;
 
-    // Skip generic city-level matches
     if (catMeta.key === 'restroom' && !/restroom|toilet|bath|comfort|park|visitor|center|station|plaza|mall/i.test(`${name} ${attrs.Type || ''}`)) {
       return;
     }
@@ -503,7 +502,6 @@ async function fetchWikipediaSightsForAnchor(anchor) {
     .filter((item) => {
       const title = String(item?.title || '');
       if (!title) return false;
-      // Exclude administrative/highway/school stubs so sights stay traveler-friendly
       return !/\b(high school|elementary school|middle school|interstate \d+|state route \d+|california state route|post office|city hall)\b/i.test(title);
     })
     .map((item) => ({
@@ -590,7 +588,6 @@ function getPoiAnchorCenters(stops) {
     }
   });
 
-  // Prioritize destination areas with the most scheduled stops
   clusters.sort((a, b) => b.weight - a.weight);
   return clusters.slice(0, 2);
 }
@@ -639,13 +636,11 @@ function curateNearbyPois(parsedItems, anchorCoordsList, maxMiles = 4.5) {
         continue;
       }
 
-      // Avoid stacking two POIs of the same type right on top of each other (~120m spacing)
       const tooCloseSameCat = chosen.some(
         (other) => Math.abs(other.lat - item.lat) < 0.0011 && Math.abs(other.lng - item.lng) < 0.0011
       );
       if (tooCloseSameCat) continue;
 
-      // Avoid hiding right underneath an itinerary stop marker
       const overlapsStop = anchorCoordsList.some(
         (anchor) => Math.abs(anchor.lat - item.lat) < 0.00025 && Math.abs(anchor.lng - item.lng) < 0.00025
       );
@@ -861,7 +856,6 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
     cacheKey = `st:${anchorCenters.map((c) => `${c.lat.toFixed(2)},${c.lng.toFixed(2)}`).join('|')}`;
   }
 
-  // Already displaying results for this exact area
   if (!forceRefresh && cacheKey === mapState.lastPoiSignature && mapState.currentPois.length > 0) {
     mapState.poiNeedsAreaScan = false;
     renderPoiFilterBar();
@@ -869,12 +863,10 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
     return;
   }
 
-  // Avoid duplicate parallel requests for the exact same area while one is already running
   if (!forceRefresh && mapState.inFlightPoiKey === cacheKey) {
     return;
   }
 
-  // Instant hit from memory / localStorage cache (0 network calls on refresh)
   const cached = mapState.poiCache.get(cacheKey);
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < POI_CACHE_TTL_MS) {
     mapState.lastPoiSignature = cacheKey;
@@ -894,7 +886,6 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
   const categories = Object.values(DARK_POI_CATEGORIES);
   const allFound = [];
 
-  // Phase 1: Fast parallel Esri World Places + Wikipedia GeoSearch across anchor clusters
   const phase1Jobs = [];
   anchorCenters.forEach((anchor) => {
     const box = buildSearchBoxAround(anchor, 0.036, 0.044);
@@ -910,7 +901,6 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
     if (Array.isArray(list)) allFound.push(...list);
   });
 
-  // Phase 2: Photon OSM backup for any category that has fewer than 3 nearby matches
   const countByCat = { restaurant: 0, attraction: 0, restroom: 0, gas: 0, parking: 0 };
   allFound.forEach((item) => {
     if (countByCat[item.category] !== undefined) countByCat[item.category]++;
@@ -954,7 +944,7 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
 }
 
 /**
- * Pixel-Aware Basemap Route Pills (Never Overlap Each Other or Stop Pins)
+ * Pixel-Aware Wayfinder Route Pills (Never Overlap Each Other or Stop Pins)
  */
 function renderBasemapLegBadges() {
   if (!mapState.basemapBadgeLayerGroup || !mapState.map || !window.L) return;
@@ -973,18 +963,15 @@ function renderBasemapLegBadges() {
     const startPt = map.latLngToContainerPoint(item.startLatLng);
     const endPt = map.latLngToContainerPoint(item.endLatLng);
 
-    // Hide pill on very short on-screen segments (automatically appears as you zoom in)
     if (startPt.distanceTo(endPt) < 88) return;
 
     const midPt = map.latLngToContainerPoint(item.midLatLng);
 
-    // Keep clear of all numbered stop pins
     const hitsStop = stopScreenPts.some(
       (sp) => Math.abs(sp.x - midPt.x) < 76 && Math.abs(sp.y - midPt.y) < 34
     );
     if (hitsStop) return;
 
-    // Keep clear of previously placed route pills
     const hitsBadge = placedBadgePts.some(
       (bp) => Math.abs(bp.x - midPt.x) < 134 && Math.abs(bp.y - midPt.y) < 32
     );
@@ -1130,9 +1117,9 @@ function ensureMapifyShell() {
         <!-- Mapify Interactive Toolbar -->
         <div class="flex flex-wrap items-center gap-1.5">
           <div class="inline-flex items-center p-0.5 rounded-full bg-black/40 border border-white/12">
-            <button type="button" data-mapify-theme="dark" title="Dark map with animated nearby restaurants, attractions, restrooms, gas & parking" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/22 text-white shadow cursor-pointer">Dark</button>
+            <button type="button" data-mapify-theme="dark" title="Compass dark map with animated nearby restaurants, attractions, restrooms, gas & parking" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/22 text-white shadow cursor-pointer">Compass</button>
             <button type="button" data-mapify-theme="street" title="Classic street map" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Street</button>
-            <button type="button" data-mapify-theme="basemap" title="Clean pastel topographic basemap with floating route pills" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Basemap</button>
+            <button type="button" data-mapify-theme="basemap" title="Wayfinder clean pastel topographic map with floating route pills" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Wayfinder</button>
           </div>
 
           <button
@@ -1181,7 +1168,7 @@ function ensureMapifyShell() {
           <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Fixed</span>
         </div>
 
-        <!-- Dark Mode Floating Nearby Places Filter Dock -->
+        <!-- Compass Mode Floating Nearby Places Filter Dock -->
         <div id="mapifyPoiDock" class="hidden absolute bottom-3 left-3 right-3 sm:right-auto z-[410] flex items-center pointer-events-auto"></div>
 
         <!-- Empty State Overlay -->
@@ -1590,7 +1577,7 @@ function buildPinPopupHtml(groupStops, combinedLabel) {
 }
 
 /**
- * Draw Vector Routes, Stops, and Style-Specific Layers (Basemap Halos & Smart Leg Pills)
+ * Draw Vector Routes, Stops, and Style-Specific Layers (Wayfinder Halos & Smart Leg Pills)
  */
 function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
   if (!mapState.map || !window.L || mapState.isCollapsed) return;

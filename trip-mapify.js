@@ -47,7 +47,7 @@ const MAP_TILE_THEMES = {
         zIndex: 2
       }
     ],
-    attribution: 'Tiles &copy; Esri &middot; Places &copy; OpenStreetMap',
+    attribution: 'Tiles &copy; Esri &middot; Places &copy; Esri / OSM / Wikipedia',
     maxZoom: 19
   },
   street: {
@@ -98,7 +98,8 @@ const DARK_POI_CATEGORIES = {
     pillActive: 'bg-orange-500/25 border-orange-400/60 text-orange-100',
     pinClass: 'mapify-poi-pin--restaurant',
     maxItems: 10,
-    photonQuery: 'restaurant',
+    esriCategory: 'Food',
+    photonQueries: ['restaurant', 'cafe'],
     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`
   },
   attraction: {
@@ -109,7 +110,8 @@ const DARK_POI_CATEGORIES = {
     pillActive: 'bg-fuchsia-500/25 border-fuchsia-400/60 text-fuchsia-100',
     pinClass: 'mapify-poi-pin--attraction',
     maxItems: 10,
-    photonQuery: 'park museum attraction',
+    esriCategory: 'Tourist Attraction,Museum,Park,Zoo,Amusement Park',
+    photonQueries: ['park', 'museum'],
     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></svg>`
   },
   restroom: {
@@ -120,7 +122,8 @@ const DARK_POI_CATEGORIES = {
     pillActive: 'bg-sky-500/25 border-sky-400/60 text-sky-100',
     pinClass: 'mapify-poi-pin--restroom',
     maxItems: 8,
-    photonQuery: 'restroom',
+    esriSingleLine: 'public restroom',
+    photonQueries: ['restroom', 'toilets'],
     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="8" cy="5.5" r="1.8"/><path d="M6 10h4l.8 5H9.5v5h-3v-5H5.2L6 10Z"/><circle cx="16.5" cy="5.5" r="1.8"/><path d="M14.3 10h4.4l1.3 5h-2v5h-3v-5h-2l1.3-5Z"/></svg>`
   },
   gas: {
@@ -131,7 +134,8 @@ const DARK_POI_CATEGORIES = {
     pillActive: 'bg-emerald-500/25 border-emerald-400/60 text-emerald-100',
     pinClass: 'mapify-poi-pin--gas',
     maxItems: 8,
-    photonQuery: 'gas station',
+    esriCategory: 'Gas Station',
+    photonQueries: ['gas station'],
     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14"/><path d="M2 20h14"/><path d="M6 8h6"/><path d="M14 12h2a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0V9.5L18.5 7"/></svg>`
   },
   parking: {
@@ -142,20 +146,14 @@ const DARK_POI_CATEGORIES = {
     pillActive: 'bg-indigo-500/25 border-indigo-400/60 text-indigo-100',
     pinClass: 'mapify-poi-pin--parking',
     maxItems: 8,
-    photonQuery: 'parking',
+    esriCategory: 'Parking',
+    photonQueries: ['parking'],
     svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9.5 16V8h3.2a2.4 2.4 0 0 1 0 4.8H9.5"/></svg>`
   }
 };
 
-/**
- * Active Public Overpass Mirrors (Private.coffee first — fast, no strict rate limits)
- */
-const OVERPASS_ENDPOINTS = [
-  'https://overpass.private.coffee/api/interpreter',
-  'https://overpass-api.de/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
-];
-const POI_CACHE_TTL_MS = 15 * 60 * 1000;
+const POI_STORAGE_KEY = 'tripos_dark_poi_cache_v1';
+const POI_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Internal Mapify Controller State
@@ -188,11 +186,41 @@ const mapState = {
   poiCache: new Map(),
   currentPois: [],
   lastPoiSignature: '',
+  inFlightPoiKey: '',
+  poiDebounceTimer: null,
   poiLoading: false,
   poiRequestId: 0,
   poiNeedsAreaScan: false,
   ignoreNextMoveEnd: false
 };
+
+function loadPoiCacheFromStorage() {
+  try {
+    const raw = window.localStorage?.getItem(POI_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    const now = Date.now();
+    Object.entries(parsed).forEach(([k, v]) => {
+      if (v && v.fetchedAt && now - v.fetchedAt < POI_CACHE_TTL_MS && Array.isArray(v.items) && v.items.length > 0) {
+        mapState.poiCache.set(k, v);
+      }
+    });
+  } catch (err) {
+    // Ignore storage read errors in restricted embeds
+  }
+}
+
+function savePoiCacheToStorage() {
+  try {
+    const entries = Array.from(mapState.poiCache.entries()).slice(-18);
+    window.localStorage?.setItem(POI_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  } catch (err) {
+    // Ignore storage quota errors
+  }
+}
+
+loadPoiCacheFromStorage();
 
 function stopRouteTour(updateBtn = true) {
   if (mapState.tourTimer) {
@@ -291,14 +319,14 @@ function setMapTileTheme(themeKey) {
     mapState.tileLayers.push(layer);
   });
 
-  // Re-draw vector overlays immediately so Basemap halos/pills or Dark POIs update right away
   if (mapState.lastMapData) {
     drawMapifyVectorLayers(mapState.lastMapData, false);
   }
 
   if (themeKey === 'dark') {
-    syncDarkNearbyPois(false);
+    scheduleDarkNearbyPoiSync(false);
   } else {
+    clearTimeout(mapState.poiDebounceTimer);
     mapState.poiLayerGroup?.clearLayers();
     renderPoiFilterBar();
   }
@@ -375,187 +403,202 @@ function formatGroupPinLabel(groupStops, showAllDays) {
 
 /**
  * ============================================================================
- * DARK MODE: LIVE NEARBY PLACES ENGINE (Fast Overpass + Photon Backup Engine)
+ * DARK MODE: FAST ZERO-API-KEY NEARBY PLACES ENGINE
+ * (Esri World Places + Wikipedia GeoSearch + Photon OSM — Zero Overpass 429s)
  * ============================================================================
  */
 
-function classifyOverpassElement(el) {
-  const tags = el?.tags || {};
-  const amenity = String(tags.amenity || '').toLowerCase();
-  const tourism = String(tags.tourism || '').toLowerCase();
-  const leisure = String(tags.leisure || '').toLowerCase();
-
-  let category = null;
-  if (['restaurant', 'cafe', 'fast_food', 'bakery', 'ice_cream', 'food_court'].includes(amenity)) {
-    category = 'restaurant';
-  } else if (['attraction', 'museum', 'zoo', 'theme_park', 'viewpoint', 'gallery', 'artwork'].includes(tourism) || leisure === 'park') {
-    category = 'attraction';
-  } else if (amenity === 'toilets') {
-    category = 'restroom';
-  } else if (amenity === 'fuel') {
-    category = 'gas';
-  } else if (amenity === 'parking') {
-    category = 'parking';
+async function fetchJsonSafe(url, timeoutMs = 6000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    clearTimeout(timer);
+    return null;
   }
+}
 
-  if (!category) return null;
-
-  const lat = Number(el.lat ?? el.center?.lat);
-  const lng = Number(el.lon ?? el.center?.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-  const rawName = String(tags.name || tags.brand || tags.operator || '').trim();
-  const fallbackNames = {
-    restaurant: 'Local Dining Spot',
-    attraction: tourism ? `${tourism.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}` : 'Scenic Park & Sight',
-    restroom: 'Public Restroom',
-    gas: 'Gas Station',
-    parking: tags.parking === 'multi-storey' ? 'Parking Structure' : 'Public Parking'
-  };
-
-  if ((category === 'restaurant' || category === 'attraction') && !rawName) return null;
-
-  const cuisine = tags.cuisine
-    ? String(tags.cuisine).split(';')[0].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-    : '';
-
-  const addressParts = [
-    [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' '),
-    tags['addr:city']
-  ].filter(Boolean);
-
-  const detailTags = [];
-  if (cuisine) detailTags.push(cuisine);
-  if (tags.opening_hours) detailTags.push(String(tags.opening_hours).slice(0, 32));
-  if (category === 'parking' && tags.fee) detailTags.push(tags.fee === 'no' ? 'Free Parking' : 'Paid Parking');
-  if (category === 'restroom' && tags.wheelchair === 'yes') detailTags.push('Accessible');
-  if (category === 'gas' && tags.brand && tags.brand !== rawName) detailTags.push(tags.brand);
-
+function buildSearchBoxAround(anchor, deltaLat = 0.032, deltaLng = 0.038) {
   return {
-    id: `${el.type || 'n'}-${el.id}`,
-    category,
-    name: rawName || fallbackNames[category],
-    lat,
-    lng,
-    address: addressParts.join(', '),
-    metaLine: detailTags.join(' · ')
+    south: anchor.lat - deltaLat,
+    north: anchor.lat + deltaLat,
+    west: anchor.lng - deltaLng,
+    east: anchor.lng + deltaLng
   };
 }
 
 /**
- * Lightweight Overpass Queries (2 fast `nw` filters per center — 80% faster than `nwr`)
+ * Source 1: Esri World Places (Fast, Structured Names, Cuisine/Type & Street Addresses)
  */
-function buildOverpassQueryForCenters(centers, radiusMeters = 1100) {
-  const blocks = [];
-  centers.forEach(({ lat, lng }) => {
-    const c = `around:${radiusMeters},${lat.toFixed(4)},${lng.toFixed(4)}`;
-    blocks.push(
-      `nw["amenity"~"^(restaurant|cafe|fast_food|bakery|toilets|fuel|parking)$"](${c});`,
-      `nw["tourism"~"^(attraction|museum|zoo|theme_park|viewpoint|gallery)$"](${c});`
-    );
+async function fetchEsriPlacesForAnchor(anchor, catMeta, box) {
+  const params = new URLSearchParams({
+    f: 'json',
+    location: `${anchor.lng.toFixed(5)},${anchor.lat.toFixed(5)}`,
+    searchExtent: `${box.west.toFixed(4)},${box.south.toFixed(4)},${box.east.toFixed(4)},${box.north.toFixed(4)}`,
+    maxLocations: '10',
+    outFields: 'PlaceName,Place_addr,Type,Addr_type'
   });
-  return `[out:json][timeout:10];(${blocks.join('')});out center 120;`;
-}
 
-function buildOverpassQueryForViewport(bounds) {
-  const s = bounds.getSouth().toFixed(4);
-  const w = bounds.getWest().toFixed(4);
-  const n = bounds.getNorth().toFixed(4);
-  const e = bounds.getEast().toFixed(4);
-  const b = `${s},${w},${n},${e}`;
-  return `[out:json][timeout:10];(
-    nw["amenity"~"^(restaurant|cafe|fast_food|bakery|toilets|fuel|parking)$"](${b});
-    nw["tourism"~"^(attraction|museum|zoo|theme_park|viewpoint|gallery)$"](${b});
-  );out center 120;`;
-}
-
-async function fetchOverpassJson(query) {
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 7500);
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-      if (!res.ok) continue;
-      const data = await res.json();
-      if (data && Array.isArray(data.elements)) return data.elements;
-    } catch (err) {
-      clearTimeout(timer);
-    }
+  if (catMeta.esriCategory) {
+    params.set('category', catMeta.esriCategory);
+  } else if (catMeta.esriSingleLine) {
+    params.set('singleLine', catMeta.esriSingleLine);
+  } else {
+    return [];
   }
-  return null;
+
+  const data = await fetchJsonSafe(
+    `https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?${params.toString()}`,
+    5500
+  );
+
+  if (!data || data.error || !Array.isArray(data.candidates)) return [];
+
+  const items = [];
+  data.candidates.forEach((cand, idx) => {
+    const lat = Number(cand?.location?.y);
+    const lng = Number(cand?.location?.x);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    const attrs = cand.attributes || {};
+    const addrType = String(attrs.Addr_type || '');
+    if (['Locality', 'Postal', 'Admin'].includes(addrType)) return;
+
+    const name = String(attrs.PlaceName || cand.address || '').split(',')[0].trim();
+    if (!name) return;
+
+    // Skip generic city-level matches
+    if (catMeta.key === 'restroom' && !/restroom|toilet|bath|comfort|park|visitor|center|station|plaza|mall/i.test(`${name} ${attrs.Type || ''}`)) {
+      return;
+    }
+
+    items.push({
+      id: `esri-${catMeta.key}-${idx}-${lat.toFixed(4)}-${lng.toFixed(4)}`,
+      category: catMeta.key,
+      name,
+      lat,
+      lng,
+      address: String(attrs.Place_addr || '').trim(),
+      metaLine: String(attrs.Type || '').trim()
+    });
+  });
+
+  return items;
 }
 
 /**
- * Automatic Backup POI Discovery via Photon (Used if all Overpass servers are temporarily busy)
+ * Source 2: Wikipedia GeoSearch (Real Local Attractions, Landmarks & Historic Sights)
  */
-async function fetchPhotonFallbackPois(anchorCenters) {
-  const primary = anchorCenters[0];
-  if (!primary) return [];
+async function fetchWikipediaSightsForAnchor(anchor) {
+  const url = `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${anchor.lat.toFixed(4)}|${anchor.lng.toFixed(4)}&gsradius=4500&gslimit=10&format=json&origin=*`;
+  const data = await fetchJsonSafe(url, 5500);
+  const list = data?.query?.geosearch;
+  if (!Array.isArray(list)) return [];
 
-  const fetchOneCategory = async (cat) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5500);
-    try {
-      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(cat.photonQuery)}&lat=${primary.lat.toFixed(4)}&lon=${primary.lng.toFixed(4)}&limit=10`;
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok) return [];
-      const data = await res.json();
-      const features = Array.isArray(data?.features) ? data.features : [];
-      const items = [];
+  return list
+    .filter((item) => {
+      const title = String(item?.title || '');
+      if (!title) return false;
+      // Exclude administrative/highway/school stubs so sights stay traveler-friendly
+      return !/\b(high school|elementary school|middle school|interstate \d+|state route \d+|california state route|post office|city hall)\b/i.test(title);
+    })
+    .map((item) => ({
+      id: `wiki-${item.pageid}`,
+      category: 'attraction',
+      name: String(item.title).trim(),
+      lat: Number(item.lat),
+      lng: Number(item.lon),
+      address: '',
+      metaLine: 'Notable Local Landmark'
+    }))
+    .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+}
 
-      features.forEach((f, idx) => {
-        const coords = f?.geometry?.coordinates;
-        if (!Array.isArray(coords) || coords.length < 2) return;
-        const lng = Number(coords[0]);
-        const lat = Number(coords[1]);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+/**
+ * Source 3: Photon OpenStreetMap Search (Fast, CORS-Enabled OSM Places & Restroom Backup)
+ */
+async function fetchPhotonPlacesForAnchor(anchor, catMeta, box) {
+  const queries = Array.isArray(catMeta.photonQueries) ? catMeta.photonQueries : [];
+  if (queries.length === 0) return [];
 
-        // Keep only genuinely nearby matches (within 6 miles of an itinerary anchor)
-        const nearest = Math.min(...anchorCenters.map((a) => haversineMiles({ lat, lng }, a)));
-        if (!Number.isFinite(nearest) || nearest > 6) return;
+  const bboxStr = `${box.west.toFixed(4)},${box.south.toFixed(4)},${box.east.toFixed(4)},${box.north.toFixed(4)}`;
+  const results = [];
 
-        const p = f.properties || {};
-        const name = String(p.name || '').trim();
-        if (!name && (cat.key === 'restaurant' || cat.key === 'attraction')) return;
+  for (const qTerm of queries) {
+    const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(qTerm)}&lat=${anchor.lat.toFixed(4)}&lon=${anchor.lng.toFixed(4)}&bbox=${bboxStr}&limit=8`;
+    const data = await fetchJsonSafe(url, 5000);
+    const features = Array.isArray(data?.features) ? data.features : [];
 
-        const addr = [
-          [p.housenumber, p.street].filter(Boolean).join(' '),
-          p.city || p.town || p.locality
-        ].filter(Boolean).join(', ');
+    features.forEach((f, idx) => {
+      const coords = f?.geometry?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) return;
+      const lng = Number(coords[0]);
+      const lat = Number(coords[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-        items.push({
-          id: `ph-${cat.key}-${p.osm_id || idx}`,
-          category: cat.key,
-          name: name || cat.fullLabel,
-          lat,
-          lng,
-          address: addr,
-          metaLine: p.osm_value ? String(p.osm_value).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : ''
-        });
+      const p = f.properties || {};
+      const osmVal = String(p.osm_value || '').toLowerCase();
+      if (['city', 'town', 'village', 'suburb', 'county', 'state', 'postcode', 'residential'].includes(osmVal)) {
+        return;
+      }
+
+      const name = String(p.name || '').trim();
+      if (!name && (catMeta.key === 'restaurant' || catMeta.key === 'attraction')) return;
+
+      const addr = [
+        [p.housenumber, p.street].filter(Boolean).join(' '),
+        p.city || p.town || p.locality
+      ].filter(Boolean).join(', ');
+
+      results.push({
+        id: `ph-${catMeta.key}-${p.osm_id || idx}`,
+        category: catMeta.key,
+        name: name || catMeta.fullLabel,
+        lat,
+        lng,
+        address: addr,
+        metaLine: p.osm_value
+          ? String(p.osm_value).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+          : ''
       });
+    });
 
-      return items;
-    } catch (err) {
-      clearTimeout(timer);
-      return [];
+    if (results.length >= 4) break;
+  }
+
+  return results;
+}
+
+/**
+ * Prioritize Stop Clusters With Most Itinerary Activity (Max 2 Anchors for Fast Clean Scans)
+ */
+function getPoiAnchorCenters(stops) {
+  const clusters = [];
+  (stops || []).forEach((s) => {
+    if (!s?.coords) return;
+    const existing = clusters.find(
+      (c) => Math.abs(c.lat - s.coords.lat) < 0.025 && Math.abs(c.lng - s.coords.lng) < 0.025
+    );
+    if (existing) {
+      existing.weight += 1;
+    } else {
+      clusters.push({ lat: s.coords.lat, lng: s.coords.lng, weight: 1 });
     }
-  };
+  });
 
-  const results = await Promise.all(Object.values(DARK_POI_CATEGORIES).map(fetchOneCategory));
-  return results.flat();
+  // Prioritize destination areas with the most scheduled stops
+  clusters.sort((a, b) => b.weight - a.weight);
+  return clusters.slice(0, 2);
 }
 
 /**
  * Deduplicate & Spatially Space Nearby POIs so Pins Stay Crisp, Cute & Uncluttered
  */
-function curateNearbyPois(parsedItems, anchorCoordsList) {
+function curateNearbyPois(parsedItems, anchorCoordsList, maxMiles = 4.5) {
   const buckets = {
     restaurant: [],
     attraction: [],
@@ -571,7 +614,8 @@ function curateNearbyPois(parsedItems, anchorCoordsList) {
       const d = haversineMiles({ lat: poi.lat, lng: poi.lng }, anchor);
       if (d < minMiles) minMiles = d;
     });
-    poi.distanceMiles = Number.isFinite(minMiles) ? Number(minMiles.toFixed(2)) : null;
+    if (!Number.isFinite(minMiles) || minMiles > maxMiles) return;
+    poi.distanceMiles = Number(minMiles.toFixed(2));
     buckets[poi.category].push(poi);
   });
 
@@ -591,8 +635,8 @@ function curateNearbyPois(parsedItems, anchorCoordsList) {
       if (chosen.length >= catMeta.maxItems) break;
 
       const normName = item.name.toLowerCase();
-      if (catKey === 'restaurant' || catKey === 'attraction') {
-        if (seenNames.has(normName)) continue;
+      if (seenNames.has(normName) && (catKey === 'restaurant' || catKey === 'attraction' || catKey === 'gas')) {
+        continue;
       }
 
       // Avoid stacking two POIs of the same type right on top of each other (~120m spacing)
@@ -615,18 +659,6 @@ function curateNearbyPois(parsedItems, anchorCoordsList) {
   });
 
   return curated;
-}
-
-function getPoiAnchorCenters(stops) {
-  const unique = [];
-  (stops || []).forEach((s) => {
-    if (!s?.coords) return;
-    const exists = unique.some(
-      (u) => Math.abs(u.lat - s.coords.lat) < 0.015 && Math.abs(u.lng - s.coords.lng) < 0.015
-    );
-    if (!exists) unique.push(s.coords);
-  });
-  return unique.slice(0, 3);
 }
 
 function buildPoiPopupHtml(poi) {
@@ -684,7 +716,7 @@ function renderPoiMarkers() {
     const meta = DARK_POI_CATEGORIES[poi.category];
     if (!meta) return;
 
-    const popDelay = Math.min(idx * 24, 480);
+    const popDelay = Math.min(idx * 22, 440);
     const ringDelay = (idx % 6) * 380;
 
     const icon = L.divIcon({
@@ -788,8 +820,20 @@ function renderPoiFilterBar() {
 
   document.getElementById('mapifyPoiScanBtn')?.addEventListener('click', (e) => {
     e.stopPropagation();
+    clearTimeout(mapState.poiDebounceTimer);
     syncDarkNearbyPois(true, true);
   });
+}
+
+function scheduleDarkNearbyPoiSync(forceRefresh = false, useViewportBounds = false) {
+  clearTimeout(mapState.poiDebounceTimer);
+  if (forceRefresh) {
+    syncDarkNearbyPois(true, useViewportBounds);
+    return;
+  }
+  mapState.poiDebounceTimer = setTimeout(() => {
+    syncDarkNearbyPois(false, useViewportBounds);
+  }, 650);
 }
 
 async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = false) {
@@ -803,33 +847,21 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
     return;
   }
 
-  let query = '';
-  let cacheKey = '';
   let anchorCenters = getPoiAnchorCenters(stops);
+  let cacheKey = '';
+  let maxRadiusMiles = 4.5;
 
   if (useViewportBounds && mapState.map) {
-    const bounds = mapState.map.getBounds();
-    const latSpan = Math.abs(bounds.getNorth() - bounds.getSouth());
-    const lngSpan = Math.abs(bounds.getEast() - bounds.getWest());
     const center = mapState.map.getCenter();
-
-    if (latSpan <= 0.18 && lngSpan <= 0.22) {
-      query = buildOverpassQueryForViewport(bounds);
-      cacheKey = `vp:${bounds.getSouth().toFixed(2)},${bounds.getWest().toFixed(2)},${bounds.getNorth().toFixed(2)},${bounds.getEast().toFixed(2)}`;
-      anchorCenters = [{ lat: center.lat, lng: center.lng }];
-    } else {
-      const centerList = [{ lat: center.lat, lng: center.lng }, ...anchorCenters.slice(0, 2)];
-      query = buildOverpassQueryForCenters(centerList, 1300);
-      cacheKey = `ct:${center.lat.toFixed(2)},${center.lng.toFixed(2)}`;
-      anchorCenters = centerList;
-    }
+    anchorCenters = [{ lat: center.lat, lng: center.lng }];
+    cacheKey = `vp:${center.lat.toFixed(2)},${center.lng.toFixed(2)}`;
+    maxRadiusMiles = 6.0;
   } else {
     if (anchorCenters.length === 0) return;
-    const radius = anchorCenters.length === 1 ? 1500 : 1100;
-    query = buildOverpassQueryForCenters(anchorCenters, radius);
     cacheKey = `st:${anchorCenters.map((c) => `${c.lat.toFixed(2)},${c.lng.toFixed(2)}`).join('|')}`;
   }
 
+  // Already displaying results for this exact area
   if (!forceRefresh && cacheKey === mapState.lastPoiSignature && mapState.currentPois.length > 0) {
     mapState.poiNeedsAreaScan = false;
     renderPoiFilterBar();
@@ -837,6 +869,12 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
     return;
   }
 
+  // Avoid duplicate parallel requests for the exact same area while one is already running
+  if (!forceRefresh && mapState.inFlightPoiKey === cacheKey) {
+    return;
+  }
+
+  // Instant hit from memory / localStorage cache (0 network calls on refresh)
   const cached = mapState.poiCache.get(cacheKey);
   if (!forceRefresh && cached && Date.now() - cached.fetchedAt < POI_CACHE_TTL_MS) {
     mapState.lastPoiSignature = cacheKey;
@@ -848,33 +886,57 @@ async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = fals
   }
 
   const reqId = ++mapState.poiRequestId;
+  mapState.inFlightPoiKey = cacheKey;
   mapState.poiLoading = true;
   mapState.poiNeedsAreaScan = false;
   renderPoiFilterBar();
 
-  // 1. Primary fast lookup via Overpass mirrors
-  let parsedPois = null;
-  const elements = await fetchOverpassJson(query);
+  const categories = Object.values(DARK_POI_CATEGORIES);
+  const allFound = [];
+
+  // Phase 1: Fast parallel Esri World Places + Wikipedia GeoSearch across anchor clusters
+  const phase1Jobs = [];
+  anchorCenters.forEach((anchor) => {
+    const box = buildSearchBoxAround(anchor, 0.036, 0.044);
+    categories.forEach((cat) => {
+      phase1Jobs.push(fetchEsriPlacesForAnchor(anchor, cat, box));
+    });
+    phase1Jobs.push(fetchWikipediaSightsForAnchor(anchor));
+  });
+
+  const phase1Results = await Promise.all(phase1Jobs);
   if (reqId !== mapState.poiRequestId) return;
+  phase1Results.forEach((list) => {
+    if (Array.isArray(list)) allFound.push(...list);
+  });
 
-  if (elements && elements.length > 0) {
-    parsedPois = elements.map(classifyOverpassElement).filter(Boolean);
-  }
+  // Phase 2: Photon OSM backup for any category that has fewer than 3 nearby matches
+  const countByCat = { restaurant: 0, attraction: 0, restroom: 0, gas: 0, parking: 0 };
+  allFound.forEach((item) => {
+    if (countByCat[item.category] !== undefined) countByCat[item.category]++;
+  });
 
-  // 2. Automatic backup lookup via Photon if Overpass servers are busy or returned empty
-  if (!parsedPois || parsedPois.length === 0) {
-    const fallbackItems = await fetchPhotonFallbackPois(anchorCenters);
+  const missingCats = categories.filter((c) => (countByCat[c.key] || 0) < 3);
+  if (missingCats.length > 0 && anchorCenters[0]) {
+    const primaryAnchor = anchorCenters[0];
+    const primaryBox = buildSearchBoxAround(primaryAnchor, 0.045, 0.055);
+    const photonResults = await Promise.all(
+      missingCats.map((cat) => fetchPhotonPlacesForAnchor(primaryAnchor, cat, primaryBox))
+    );
     if (reqId !== mapState.poiRequestId) return;
-    if (fallbackItems.length > 0) {
-      parsedPois = fallbackItems;
-    }
+    photonResults.forEach((list) => {
+      if (Array.isArray(list)) allFound.push(...list);
+    });
   }
 
+  mapState.inFlightPoiKey = '';
   mapState.poiLoading = false;
 
-  if (parsedPois && parsedPois.length > 0) {
-    const curated = curateNearbyPois(parsedPois, anchorCenters);
+  const curated = curateNearbyPois(allFound, anchorCenters, maxRadiusMiles);
+
+  if (curated.length > 0) {
     mapState.poiCache.set(cacheKey, { items: curated, fetchedAt: Date.now() });
+    savePoiCacheToStorage();
     mapState.lastPoiSignature = cacheKey;
     mapState.currentPois = curated;
 
@@ -1176,7 +1238,7 @@ function ensureMapifyShell() {
       lbl.textContent = 'Hide Map';
       setTimeout(() => {
         invalidateMapifySize(true);
-        if (mapState.theme === 'dark') syncDarkNearbyPois(false);
+        if (mapState.theme === 'dark') scheduleDarkNearbyPoiSync(false);
       }, 120);
     }
     syncThemeChrome();
@@ -1412,7 +1474,6 @@ function buildPinPopupHtml(groupStops, combinedLabel) {
   const anyInherited = groupStops.every((s) => s.isInheritedLoc);
   const mapUrl = getStopMapUrl(primaryLocation);
 
-  // Single visit at this address
   if (groupStops.length === 1) {
     const { event: ev, day, stopIndex, incomingLeg } = first;
     const cat = getCategoryMeta(ev.category);
@@ -1468,7 +1529,6 @@ function buildPinPopupHtml(groupStops, combinedLabel) {
     `;
   }
 
-  // Multiple visits at the same address (e.g., Stops 2 & 6)
   const visitsHtml = groupStops.map((s) => {
     const { event: ev, day, stopIndex, incomingLeg } = s;
     const cat = getCategoryMeta(ev.category);
@@ -1588,7 +1648,6 @@ function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
               ? palette.hex
               : '#38bdf8');
 
-    // Outer casing/glow
     L.polyline(pathCoords, {
       color: isBasemap ? '#ffffff' : strokeColor,
       weight: isBasemap ? (isWalk ? 6.5 : 7.5) : (isWalk ? 6 : 8),
@@ -1625,7 +1684,6 @@ function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
 
     coreLine.bindPopup(legPopupHtml, { className: 'mapify-glass-popup', maxWidth: 270 });
 
-    // Store candidate for pixel-spaced Basemap route pill rendering
     if (isBasemap && Number.isFinite(leg.durationMinutes) && leg.distanceMiles > 0.25) {
       const midLatLng = pathCoords[Math.floor(pathCoords.length / 2)];
       if (midLatLng) {
@@ -1667,7 +1725,6 @@ function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
     allBoundsPoints.push([coords.lat, coords.lng]);
     mapState.basemapStopCoords.push(coords);
 
-    // Basemap Style Exclusive: Soft Pastel Destination Glow Halo Behind Each Stop
     if (isBasemap) {
       const haloRgb = appStore.showAllDays ? palette.rgb : `${r}, ${g}, ${b}`;
       const haloIcon = L.divIcon({
@@ -1721,7 +1778,6 @@ function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
     });
   });
 
-  // Preserve chronological order for Play Tour (visits repeat locations in exact schedule order)
   mapData.stops.forEach((stop) => {
     const marker = markerByStopEventId.get(stop.event.id);
     if (marker) {
@@ -1774,8 +1830,9 @@ export function renderMapify(tripStats) {
   drawMapifyVectorLayers(mapData, true);
 
   if (mapState.theme === 'dark') {
-    syncDarkNearbyPois(false);
+    scheduleDarkNearbyPoiSync(false);
   } else {
+    clearTimeout(mapState.poiDebounceTimer);
     mapState.poiLayerGroup?.clearLayers();
     renderPoiFilterBar();
   }

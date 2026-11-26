@@ -1,6 +1,5 @@
 import {
   ICONS,
-  LINK_ICON_META,
   RESERVATION_TYPE_META,
   RESERVATION_STATUS_META,
   BUDGET_CATEGORY_META,
@@ -53,7 +52,6 @@ export const detailHooks = {
   moveEvent: () => {},
   openChecklistCategoryModal: () => {},
   openBudgetModal: () => {},
-  openLinkModal: () => {},
   openReservationModal: () => {},
   cycleReservationStatus: () => {},
   deleteReservation: () => {},
@@ -655,7 +653,7 @@ export function renderReservations() {
     countsByType[t]++;
   });
 
-  // 1. Live Status Counters in Header
+  // 1. Live Status Counters in Header (Click to Toggle Status Filter)
   if (summaryEl) {
     if (list.length === 0) {
       summaryEl.innerHTML = `
@@ -668,9 +666,13 @@ export function renderReservations() {
         <button
           type="button"
           data-vault-quick-status="${key}"
-          title="Filter by ${esc(meta.label)}"
+          title="Toggle ${esc(meta.label)} filter"
           class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold transition-all cursor-pointer tabular-nums ${meta.badgeClass} ${
-            countsByStatus[key] === 0 ? 'opacity-45' : 'hover:brightness-110'
+            appStore.vaultStatusFilter === key
+              ? 'ring-1 ring-white/50 shadow-sm'
+              : countsByStatus[key] === 0
+                ? 'opacity-45'
+                : 'hover:brightness-110'
           }"
         >
           <span class="w-1.5 h-1.5 rounded-full ${meta.dotClass}"></span>
@@ -735,18 +737,15 @@ export function renderReservations() {
     });
   }
 
-  // 3. Status Filter Pills
+  // 3. Status Filter Pills (Confirmed, Pending, Cancelled — click active pill to clear)
   if (statusFiltersEl) {
     const activeStatus = appStore.vaultStatusFilter || 'all';
-    const statusPills = [
-      { key: 'all', label: 'Any Status', dot: 'bg-white/50', activeClass: 'bg-white/20 border-white/40 text-white' },
-      ...Object.entries(RESERVATION_STATUS_META).map(([k, m]) => ({
-        key: k,
-        label: m.label,
-        dot: m.dotClass,
-        activeClass: `${m.badgeClass} ring-1 ring-white/35`
-      }))
-    ];
+    const statusPills = Object.entries(RESERVATION_STATUS_META).map(([k, m]) => ({
+      key: k,
+      label: m.label,
+      dot: m.dotClass,
+      activeClass: `${m.badgeClass} ring-1 ring-white/40 shadow-sm`
+    }));
 
     statusFiltersEl.innerHTML = statusPills.map((sp) => {
       const active = activeStatus === sp.key;
@@ -754,6 +753,7 @@ export function renderReservations() {
         <button
           type="button"
           data-vault-status="${sp.key}"
+          title="${active ? 'Click again to show all statuses' : `Filter by ${esc(sp.label)}`}"
           class="vault-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
             active
               ? sp.activeClass
@@ -768,7 +768,8 @@ export function renderReservations() {
 
     statusFiltersEl.querySelectorAll('[data-vault-status]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        appStore.vaultStatusFilter = btn.dataset.vaultStatus;
+        const picked = btn.dataset.vaultStatus;
+        appStore.vaultStatusFilter = appStore.vaultStatusFilter === picked ? 'all' : picked;
         renderReservations();
       });
     });
@@ -788,8 +789,8 @@ export function renderReservations() {
           ${ICONS.ticket}
         </div>
         <div class="space-y-1">
-          <div class="text-sm font-semibold text-white">Your Trip Vault is Ready</div>
-          <p class="text-xs text-white/55 max-w-md mx-auto">Add hotel &amp; Airbnb stays, flights, rental cars, restaurant reservations, and attraction tickets with check-in times and confirmation numbers.</p>
+          <div class="text-sm font-semibold text-white">No Bookings Added Yet</div>
+          <p class="text-xs text-white/55 max-w-md mx-auto">Add stays, flights, rental cars, dining reservations, attraction tickets, confirmation numbers, and official links.</p>
         </div>
         <button type="button" data-vault-empty-add="1" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-500/90 to-sky-500/90 hover:from-orange-400 hover:to-sky-400 text-white shadow-md transition-all cursor-pointer">
           ${ICONS.plus}
@@ -939,7 +940,7 @@ export function renderReservations() {
                 href="${esc(res.bookingUrl)}"
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Open booking or ticket page"
+                title="Open booking or official page"
                 class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-orange-500/25 border border-white/15 hover:border-orange-400/40 text-[11px] font-semibold text-white/90 hover:text-white transition-all shrink-0"
               >
                 <span>Open</span>
@@ -975,44 +976,6 @@ export function renderReservations() {
   container.querySelectorAll('[data-del-res]').forEach((btn) => {
     btn.addEventListener('click', () => detailHooks.deleteReservation(btn.dataset.delRes));
   });
-}
-
-/**
- * Copy All Reservations, Confirmation Numbers & Personal Notes as Clean Text
- */
-export function copyAllVaultBookings() {
-  const state = appStore.state;
-  const list = Array.isArray(state.reservations) ? state.reservations : [];
-  const notesText = String(state.notes || '').trim();
-
-  if (list.length === 0 && !notesText) {
-    showToast('No bookings or notes to copy yet', 'error');
-    return;
-  }
-
-  const lines = [`=== ${state.meta?.title || 'TRIP VAULT'} ===`];
-
-  if (list.length > 0) {
-    lines.push('', 'RESERVATIONS & BOOKINGS:');
-    list.forEach((res, idx) => {
-      const tMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
-      const sMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
-      lines.push(`${idx + 1}. [${sMeta.label.toUpperCase()}] ${tMeta.label}: ${res.title}`);
-      if (res.provider) lines.push(`   Provider: ${res.provider}`);
-      if (res.checkIn) lines.push(`   ${tMeta.startLabel}: ${res.checkIn}`);
-      if (res.checkOut) lines.push(`   ${tMeta.endLabel}: ${res.checkOut}`);
-      if (res.location) lines.push(`   Location: ${res.location}`);
-      if (res.confirmationNumber) lines.push(`   Confirmation #: ${res.confirmationNumber}`);
-      if (res.bookingUrl) lines.push(`   Link: ${res.bookingUrl}`);
-      if (res.notes) lines.push(`   Notes: ${res.notes}`);
-    });
-  }
-
-  if (notesText) {
-    lines.push('', 'PERSONAL TRIP NOTES:', notesText);
-  }
-
-  copyTextToClipboard(lines.join('\n'), 'All bookings & notes copied!');
 }
 
 /**
@@ -1497,89 +1460,6 @@ export function renderNotes() {
 }
 
 /**
- * Render Official Links & Visitor Info Cards
- */
-export function renderLinks() {
-  const state = appStore.state;
-  const container = document.getElementById('linksContainer');
-  if (state.links.length === 0) {
-    container.innerHTML = `<div class="rounded-2xl border border-dashed border-white/12 bg-black/20 p-4 text-center text-xs text-white/50">No links yet. Click "+ Link" to add a destination website, hours, and tips.</div>`;
-    return;
-  }
-
-  container.innerHTML = state.links.map((lk) => {
-    const meta = LINK_ICON_META[lk.icon] || LINK_ICON_META.web;
-    return `
-      <div class="group/link relative rounded-2xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-sky-400/35 p-3 transition-all duration-200 hover:-translate-y-0.5 shadow-lg shadow-black/20">
-        <div class="flex items-start gap-2.5">
-          <a href="${esc(lk.url)}" target="_blank" rel="noopener noreferrer" title="Open ${esc(lk.label)}" class="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 shadow-md transition-transform duration-200 group-hover/link:scale-105 ${meta.style}">
-            ${ICONS[meta.icon]}
-          </a>
-
-          <div class="min-w-0 flex-1 space-y-1.5">
-            <div class="flex items-start justify-between gap-1.5">
-              <a href="${esc(lk.url)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-white hover:text-sky-300 transition-colors leading-snug min-w-0">
-                <span class="truncate">${esc(lk.label)}</span>
-                <span class="opacity-60 shrink-0">${ICONS.link}</span>
-              </a>
-              <div class="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover/link:opacity-100 transition-opacity duration-200">
-                <button type="button" data-edit-link="${esc(lk.id)}" title="Edit link details" class="p-1 rounded-lg text-white/55 hover:text-sky-300 hover:bg-sky-400/15 cursor-pointer">${ICONS.edit}</button>
-                <button type="button" data-del-link="${esc(lk.id)}" title="Remove link" class="p-1 rounded-lg text-white/45 hover:text-rose-300 hover:bg-rose-500/15 cursor-pointer">${ICONS.trash}</button>
-              </div>
-            </div>
-
-            ${(lk.location || lk.hours) ? `
-              <div class="flex flex-col gap-1 text-[11px] text-white/70">
-                ${lk.location ? `
-                  <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="text-sky-300/85 shrink-0">${ICONS.pin}</span>
-                    <span class="truncate">${esc(lk.location)}</span>
-                  </div>
-                ` : ''}
-                ${lk.hours ? `
-                  <div class="flex items-center gap-1.5 min-w-0">
-                    <span class="text-amber-300/85 shrink-0">${ICONS.clock}</span>
-                    <span class="truncate">${esc(lk.hours)}</span>
-                  </div>
-                ` : ''}
-              </div>
-            ` : ''}
-
-            ${lk.info ? `
-              <p class="text-[11px] text-white/55 leading-relaxed bg-black/25 border border-white/8 rounded-xl px-2.5 py-1.5 break-words">
-                ${esc(lk.info)}
-              </p>
-            ` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  container.querySelectorAll('[data-edit-link]').forEach((btn) => {
-    btn.addEventListener('click', () => detailHooks.openLinkModal(btn.dataset.editLink));
-  });
-
-  container.querySelectorAll('[data-del-link]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const linkObj = state.links.find((l) => l.id === btn.dataset.delLink);
-      if (!linkObj) return;
-      openConfirmDeleteModal({
-        title: 'Delete Official Link',
-        itemName: linkObj.label,
-        detail: 'Do you want to remove this link from your official links panel?',
-        onConfirm: () => {
-          state.links = state.links.filter((l) => l.id !== linkObj.id);
-          renderLinks();
-          scheduleCloudSave();
-          showToast('Link removed');
-        }
-      });
-    });
-  });
-}
-
-/**
  * Master Render Function (Refreshes All Dashboard Sections)
  */
 export function renderAll() {
@@ -1591,7 +1471,6 @@ export function renderAll() {
   renderChecklist();
   renderBudget();
   renderNotes();
-  renderLinks();
 }
 
 /**
@@ -2213,7 +2092,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     }
   });
 
-  // ==================== RESERVATIONS & BOOKINGS VAULT GLASS MODULE ====================
+  // ==================== RESERVATIONS & TRIP VAULT GLASS MODULE ====================
   onProgress(74, 'Crafting reservations vault, budget & checklist...', 3);
   const reservationsList = Array.isArray(state.reservations) ? state.reservations : [];
   if (reservationsList.length > 0) {
@@ -2223,17 +2102,14 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     const xCount = reservationsList.filter((r) => r.status === 'cancelled').length;
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.2);
-    doc.setTextColor(56, 189, 248);
-    doc.text('RESERVATIONS • BOOKINGS • CONFIRMATIONS', margin + 6, y + 8);
     doc.setFontSize(12);
     doc.setTextColor(255, 255, 255);
-    doc.text(`Reservations & Trip Vault (${reservationsList.length})`, margin + 6, y + 22);
+    doc.text(`Reservations & Trip Vault (${reservationsList.length})`, margin + 6, y + 18);
 
     drawGlassPill(
       doc,
       margin + contentW - 210,
-      y + 7,
+      y + 5,
       pdfSafeText(`${cCount} Confirmed • ${pCount} Pending • ${xCount} Cancelled`),
       {
         bgRgb: [255, 255, 255],
@@ -2245,7 +2121,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
       }
     );
 
-    y += 30;
+    y += 28;
 
     reservationsList.forEach((res) => {
       const tMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
@@ -2358,7 +2234,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
   }
 
   // ==================== BUDGET COMPARISON GLASS MODULE ====================
-  onProgress(82, 'Crafting glass budget, checklist & links...', 3);
+  onProgress(82, 'Crafting glass budget, checklist & notes...', 3);
   const budgetHeaderH = 62;
   ensureSpace(160);
 
@@ -2621,63 +2497,6 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     y += noteCardH + 14;
   }
 
-  // ==================== OFFICIAL LINKS & VISITOR INFO (CLICKABLE) ====================
-  if (state.links.length > 0) {
-    ensureSpace(75);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7.2);
-    doc.setTextColor(56, 189, 248);
-    doc.text('NETWORK • WEB', margin + 6, y + 8);
-    doc.setFontSize(12);
-    doc.setTextColor(255, 255, 255);
-    doc.text('Official Links & Visitor Info', margin + 6, y + 22);
-    y += 30;
-
-    state.links.forEach((lk) => {
-      const metaLine = pdfSafeText([lk.location, lk.hours].filter(Boolean).join('  •  '));
-      const infoLines = lk.info ? doc.splitTextToSize(pdfSafeText(lk.info), contentW - 36) : [];
-      const cardH = 34 + (metaLine ? 12 : 0) + (infoLines.length * 10.5) + (infoLines.length ? 4 : 0);
-      ensureSpace(cardH + 8);
-
-      drawGlassCard(doc, margin, y, contentW, cardH, 11, {
-        fillRgb: [16, 20, 30],
-        fillAlpha: 0.72,
-        tintAlpha: 0.05,
-        borderAlpha: 0.18,
-        topSheen: false
-      });
-
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(9.5);
-      doc.setTextColor(255, 255, 255);
-      doc.text(pdfSafeText(lk.label || ''), margin + 14, y + 15);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.8);
-      doc.setTextColor(125, 211, 252);
-      const urlStr = pdfSafeText(lk.url || '');
-      doc.text(urlStr, margin + 14, y + 26, { maxWidth: contentW - 28 });
-      if (lk.url) {
-        doc.link(margin + 10, y + 4, contentW - 20, 26, { url: lk.url });
-      }
-
-      let innerY = y + 37;
-      if (metaLine) {
-        doc.setFontSize(7.8);
-        doc.setTextColor(253, 186, 116);
-        doc.text(metaLine, margin + 14, innerY, { maxWidth: contentW - 28 });
-        innerY += 12;
-      }
-      if (infoLines.length) {
-        doc.setFontSize(7.8);
-        doc.setTextColor(203, 213, 225);
-        doc.text(infoLines, margin + 14, innerY);
-      }
-
-      y += cardH + 7;
-    });
-  }
-
   // ==================== PAGE NUMBERS & SPATIAL FOOTER ====================
   const totalPages = doc.internal.getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
@@ -2726,7 +2545,7 @@ export async function openSavePdfFlow() {
 
         <div>
           <h4 id="pdfStatusTitle" class="text-base font-semibold text-white">Capturing your live landscape backdrop...</h4>
-          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, reservations, budget &amp; links</p>
+          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, reservations, budget &amp; notes</p>
         </div>
 
         <div class="relative h-2.5 w-full rounded-full bg-white/10 overflow-hidden">

@@ -66,17 +66,6 @@ export const ICONS = {
   gift: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/></svg>`
 };
 
-export const LINK_ICON_META = {
-  lights: { label: 'Lights & Festivals', icon: 'highlight', style: 'bg-gradient-to-br from-amber-500/25 to-orange-500/20 border-amber-400/40 text-amber-300 shadow-amber-500/15' },
-  ticket: { label: 'Tickets & Passes', icon: 'ticket', style: 'bg-gradient-to-br from-sky-500/25 to-cyan-500/20 border-sky-400/40 text-sky-300 shadow-sky-500/15' },
-  tram: { label: 'Mountain & Scenic', icon: 'mountain', style: 'bg-gradient-to-br from-indigo-500/25 to-sky-500/20 border-indigo-400/40 text-indigo-300 shadow-indigo-500/15' },
-  dining: { label: 'Dining & Food', icon: 'food', style: 'bg-gradient-to-br from-rose-500/25 to-orange-500/20 border-rose-400/40 text-rose-300 shadow-rose-500/15' },
-  museum: { label: 'Museum & Aviation', icon: 'plane', style: 'bg-gradient-to-br from-violet-500/25 to-fuchsia-500/20 border-violet-400/40 text-violet-300 shadow-violet-500/15' },
-  garden: { label: 'Zoo & Nature', icon: 'leaf', style: 'bg-gradient-to-br from-emerald-500/25 to-teal-500/20 border-emerald-400/40 text-emerald-300 shadow-emerald-500/15' },
-  hotel: { label: 'Hotel & Stays', icon: 'hotel', style: 'bg-gradient-to-br from-blue-500/25 to-indigo-500/20 border-blue-400/40 text-blue-300 shadow-blue-500/15' },
-  web: { label: 'General Website', icon: 'globe', style: 'bg-gradient-to-br from-white/15 to-sky-500/15 border-white/25 text-white/90 shadow-black/20' }
-};
-
 /**
  * Reservations & Bookings Vault Categories (Dynamic Labels & Color Themes)
  */
@@ -159,7 +148,7 @@ export const RESERVATION_TYPE_META = {
     titlePlaceholder: 'e.g. WildLights Day + Night Bundle · Tramway',
     providerPlaceholder: 'e.g. Official Site · 2 Adults, 1 Infant (Free)',
     locationPlaceholder: 'e.g. The Living Desert Zoo, Palm Desert, CA',
-    startLabel: 'Entry / Start',
+    startLabel: 'Entry / Hours',
     endLabel: 'Exit / Ends',
     startPlaceholder: 'e.g. Sat, Nov 28 · 1:30 PM',
     endPlaceholder: 'e.g. WildLights 6:00–9:00 PM',
@@ -470,6 +459,39 @@ export function normalizeReservationItem(raw) {
   };
 }
 
+function convertLegacyLinkToReservation(lk) {
+  if (!lk || !String(lk.label || '').trim()) return null;
+  const icon = String(lk.icon || '').toLowerCase();
+  const type = icon === 'hotel'
+    ? 'hotel'
+    : icon === 'dining'
+      ? 'restaurant'
+      : 'ticket';
+
+  return normalizeReservationItem({
+    id: lk.id ? `res-mig-${lk.id}` : uid('res'),
+    type,
+    status: 'pending',
+    title: lk.label,
+    provider: 'Official Booking / Info',
+    location: lk.location || '',
+    checkIn: lk.hours || '',
+    checkOut: '',
+    confirmationNumber: '',
+    bookingUrl: lk.url || '',
+    notes: lk.info || ''
+  });
+}
+
+function normalizeUrlForCompare(url) {
+  return String(url || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/\/+$/, '');
+}
+
 export function getAllCategories() {
   const merged = { ...CATEGORY_META };
   const customs = Array.isArray(appStore.state?.customCategories) ? appStore.state.customCategories : [];
@@ -642,7 +664,7 @@ export function openConfirmDeleteModal({
 }
 
 /**
- * Initial Thanksgiving Getaway Planner State (With Verified Location Coords, Time Slots & Starter Reservations)
+ * Initial Thanksgiving Getaway Planner State (All Bookings & Official Links Unified in Trip Vault)
  */
 export function createInitialState() {
   const trip = {
@@ -831,13 +853,13 @@ export function createInitialState() {
         type: 'hotel',
         status: 'pending',
         title: 'Riverside Hotel (1 Night)',
-        provider: 'Near Mission Inn',
+        provider: 'Near Downtown Riverside',
         location: 'Downtown Riverside, CA',
         checkIn: 'Fri, Nov 27 · 5:30 PM',
         checkOut: 'Sat, Nov 28 · 10:30 AM',
         confirmationNumber: '',
-        bookingUrl: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/',
-        notes: 'Reserve advance parking if possible; request quiet room near Festival of Lights.'
+        bookingUrl: '',
+        notes: 'Check in first, unload luggage, and rest before Festival of Lights.'
       },
       {
         id: 'res-2',
@@ -853,17 +875,43 @@ export function createInitialState() {
         notes: 'Ask about early check-in or luggage storage on Saturday around 12:15 PM.'
       },
       {
+        id: 'res-mission-inn',
+        type: 'ticket',
+        status: 'pending',
+        title: 'Mission Inn Festival of Lights',
+        provider: 'Festival & Advance Parking Info',
+        location: 'Downtown Riverside, CA',
+        checkIn: 'Fri, Nov 27 · 5:00 PM',
+        checkOut: '11:00 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/',
+        notes: 'Reserve advance parking if possible; closed Thanksgiving & Christmas Day.'
+      },
+      {
         id: 'res-3',
         type: 'ticket',
         status: 'pending',
         title: 'WildLights Day + Night Bundle',
         provider: 'The Living Desert · 2 Adults, 1 Infant',
-        location: 'The Living Desert Zoo, Palm Desert, CA',
-        checkIn: 'Sat, Nov 28 · 1:30 PM',
+        location: 'Palm Desert, CA',
+        checkIn: 'Sat, Nov 28 · Zoo until 5:00 PM',
         checkOut: 'WildLights 6:00–9:00 PM',
         confirmationNumber: '',
         bookingUrl: 'https://www.livingdesert.org/events/wildlights-2026/2026-11-28/',
-        notes: 'Daytime guests exit by 5:00 PM; WildLights last admission is 8:30 PM.'
+        notes: 'Last entry 8:30 PM. Check date-specific Day + Night tickets before buying.'
+      },
+      {
+        id: 'res-tramway',
+        type: 'ticket',
+        status: 'pending',
+        title: 'Palm Springs Aerial Tramway',
+        provider: 'Mountain Station (8,516 ft)',
+        location: 'Palm Springs, CA (8,516 ft)',
+        checkIn: 'Sun, Nov 29 · 3:45 PM',
+        checkOut: 'Last tram down 9:30 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://pstramway.com/tickets/',
+        notes: 'Mountain Station is 30–40°F colder; pack warm layers for everyone.'
       },
       {
         id: 'res-4',
@@ -871,37 +919,54 @@ export function createInitialState() {
         status: 'pending',
         title: 'Peaks Restaurant · Sunset Dinner',
         provider: 'Mountain Station · Party of 3',
-        location: 'Palm Springs Aerial Tramway, CA',
-        checkIn: 'Sun, Nov 29 · 5:15 PM',
-        checkOut: '6:45 PM',
+        location: 'Mountain Station, Palm Springs',
+        checkIn: 'Sun, Nov 29 · 5:00 PM',
+        checkOut: 'Dinner until 7:45 PM',
         confirmationNumber: '',
         bookingUrl: 'https://pstramway.com/dining/',
-        notes: 'Reserve table early for sunset seating; bring warm jackets (8,516 ft elevation).'
+        notes: 'Advance table reservations strongly recommended for sunset seating.'
+      },
+      {
+        id: 'res-air-museum',
+        type: 'ticket',
+        status: 'pending',
+        title: 'Palm Springs Air Museum',
+        provider: 'General Admission',
+        location: 'Palm Springs, CA',
+        checkIn: 'Daily · 10:00 AM',
+        checkOut: '5:00 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://palmspringsairmuseum.org/visit/',
+        notes: 'Admission applies; great morning family stop.'
+      },
+      {
+        id: 'res-moorten',
+        type: 'ticket',
+        status: 'pending',
+        title: 'Moorten Botanical Garden',
+        provider: 'Historic Desert Garden & Cactarium',
+        location: 'Palm Springs, CA',
+        checkIn: '10:00 AM',
+        checkOut: '4:00 PM (Closed Wed)',
+        confirmationNumber: '',
+        bookingUrl: 'https://www.moortenbotanicalgarden.com/',
+        notes: 'Historic desert botanical garden & Cactarium.'
       },
       {
         id: 'res-5',
         type: 'ticket',
         status: 'pending',
         title: '123 Farm Christmas Nights',
-        provider: 'Weekday Admission · 5–10 PM',
-        location: '123 Farm, Cherry Valley, CA',
+        provider: 'Weekday Admission',
+        location: 'Cherry Valley, CA',
         checkIn: 'Mon, Nov 30 · 5:00 PM',
-        checkOut: '7:30 PM',
+        checkOut: '10:00 PM',
         confirmationNumber: '',
         bookingUrl: 'https://ticket.123farm.com/xmas',
-        notes: 'Purchase date-specific tickets online ahead; gate tickets may not be available.'
+        notes: 'Buy date-specific tickets online; gate tickets may not be available.'
       }
     ],
-    notes: '',
-    links: [
-      { id: 'l1', label: 'Mission Inn info', url: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/', icon: 'lights', location: 'Downtown Riverside, CA', hours: '5:00 PM – 11:00 PM', info: 'Reserve advance parking if possible; closed Thanksgiving & Christmas Day.' },
-      { id: 'l2', label: 'WildLights tickets', url: 'https://www.livingdesert.org/events/wildlights-2026/2026-11-28/', icon: 'garden', location: 'Palm Desert, CA', hours: 'Zoo until 5 PM · WildLights 6–9 PM', info: 'Last entry 8:30 PM. Check date-specific Day + Night tickets.' },
-      { id: 'l3', label: 'Tram tickets', url: 'https://pstramway.com/tickets/', icon: 'tram', location: 'Palm Springs, CA (8,516 ft)', hours: 'Last tram down at 9:30 PM', info: 'Mountain Station is 30–40°F colder; pack warm layers.' },
-      { id: 'l4', label: 'Peaks dining', url: 'https://pstramway.com/dining/', icon: 'dining', location: 'Mountain Station, Palm Springs', hours: 'Dinner 5:00 PM – 7:45 PM', info: 'Advance table reservations strongly recommended for sunset.' },
-      { id: 'l5', label: 'Air Museum', url: 'https://palmspringsairmuseum.org/visit/', icon: 'museum', location: 'Palm Springs, CA', hours: 'Daily 10:00 AM – 5:00 PM', info: 'Admission applies; great morning family stop.' },
-      { id: 'l6', label: 'Moorten Garden', url: 'https://www.moortenbotanicalgarden.com/', icon: 'garden', location: 'Palm Springs, CA', hours: '10:00 AM – 4:00 PM (Closed Wed)', info: 'Historic desert botanical garden & Cactarium.' },
-      { id: 'l7', label: '123 Farm tickets', url: 'https://ticket.123farm.com/xmas', icon: 'ticket', location: 'Cherry Valley, CA', hours: 'Mon Weekday 5:00 PM – 10:00 PM', info: 'Buy date-specific tickets online; gate tickets may not be available.' }
-    ]
+    notes: ''
   };
   normalizeTripSchedules(trip);
   return trip;
@@ -995,8 +1060,7 @@ export function createNewDefaultTrip({
       ]
     },
     reservations: [],
-    notes: '',
-    links: []
+    notes: ''
   };
   normalizeTripSchedules(trip);
   return trip;
@@ -1053,6 +1117,27 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     ? rawTrip.reservations.map((r) => normalizeReservationItem(r)).filter((r) => r.title)
     : (isDefaultThanksgiving ? base.reservations.map((r) => normalizeReservationItem(r)) : []);
 
+  // Automatically merge any legacy saved Official Links into Reservations & Trip Vault (zero duplicates)
+  if (Array.isArray(rawTrip?.links) && rawTrip.links.length > 0) {
+    const existingUrls = new Set(
+      normalizedReservations.map((r) => normalizeUrlForCompare(r.bookingUrl)).filter(Boolean)
+    );
+    const existingTitles = new Set(
+      normalizedReservations.map((r) => r.title.toLowerCase())
+    );
+
+    rawTrip.links.forEach((lk) => {
+      const converted = convertLegacyLinkToReservation(lk);
+      if (!converted) return;
+      const normUrl = normalizeUrlForCompare(converted.bookingUrl);
+      const normTitle = converted.title.toLowerCase();
+      if ((normUrl && existingUrls.has(normUrl)) || existingTitles.has(normTitle)) return;
+      normalizedReservations.push(converted);
+      if (normUrl) existingUrls.add(normUrl);
+      existingTitles.add(normTitle);
+    });
+  }
+
   const merged = {
     ...base,
     ...rawTrip,
@@ -1064,9 +1149,9 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
     budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
     reservations: normalizedReservations,
-    notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : '',
-    links: Array.isArray(rawTrip?.links) ? rawTrip.links : []
+    notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : ''
   };
+  delete merged.links;
   normalizeTripSchedules(merged);
   return merged;
 }
@@ -1376,11 +1461,10 @@ export function serializeStateForCloud() {
     reservations: Array.isArray(trip.reservations)
       ? trip.reservations.map((r) => normalizeReservationItem(r))
       : [],
-    notes: trip.notes,
-    links: trip.links
+    notes: trip.notes
   }));
   return JSON.stringify({
-    version: 4,
+    version: 5,
     activeTripId: appStore.activeTripId,
     trips: cleanTrips
   });
@@ -1472,7 +1556,6 @@ export function renderStaticIcons() {
   setHtml('prevIcon', ICONS.chevronLeft);
   setHtml('nextIcon', ICONS.chevronRight);
   setHtml('copyNotesIcon', ICONS.copy);
-  setHtml('copyAllBookingsIcon', ICONS.copy);
   setHtml('addReservationIcon', ICONS.plus);
   setHtml('modalCloseBtn', ICONS.close);
   setHtml('toggleWeatherChevron', ICONS.chevronDown);

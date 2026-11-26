@@ -24,8 +24,7 @@ import {
   scrollToTimelineEvent,
   renderItinerary,
   renderAll,
-  openSavePdfFlow,
-  copyAllVaultBookings
+  openSavePdfFlow
 } from './trip-planner-detail.js';
 
 import {
@@ -40,7 +39,6 @@ import {
   cycleReservationStatus,
   deleteReservation,
   openChecklistCategoryModal,
-  openLinkModal,
   openBudgetModal,
   openDayModal,
   confirmDeleteDay,
@@ -79,7 +77,6 @@ registerDetailHooks({
   moveEvent,
   openChecklistCategoryModal,
   openBudgetModal,
-  openLinkModal,
   openReservationModal,
   cycleReservationStatus,
   deleteReservation,
@@ -150,17 +147,15 @@ function bindGlobalEvents() {
     renderItinerary();
   });
 
-  // Unified Reservations, Bookings & Notes Vault Controls
+  // Unified Reservations & Trip Vault Controls
   document.getElementById('addReservationBtn')?.addEventListener('click', () => {
     const preselectedType = appStore.vaultTypeFilter && appStore.vaultTypeFilter !== 'all'
       ? appStore.vaultTypeFilter
       : null;
     openReservationModal(null, preselectedType);
   });
-  document.getElementById('copyAllBookingsBtn')?.addEventListener('click', copyAllVaultBookings);
 
   document.getElementById('addBudgetRowBtn')?.addEventListener('click', () => openBudgetModal(null));
-  document.getElementById('addLinkBtn')?.addEventListener('click', () => openLinkModal(null));
   document.getElementById('addChecklistCategoryBtn')?.addEventListener('click', () => openChecklistCategoryModal(null));
 
   document.getElementById('toggleWeatherForecastBtn')?.addEventListener('click', () => {

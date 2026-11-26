@@ -1,6 +1,5 @@
 import {
   ICONS,
-  LINK_ICON_META,
   RESERVATION_TYPE_META,
   RESERVATION_STATUS_META,
   CATEGORY_META,
@@ -64,7 +63,6 @@ import {
   renderBudget,
   updateBudgetTotals,
   renderReservations,
-  renderLinks,
   renderAll
 } from './trip-planner-detail.js';
 
@@ -710,7 +708,7 @@ export function openReservationModal(reservationId = null, preselectedType = nul
               <input id="rCode" placeholder="${esc(typeMeta.codePlaceholder)}" class="${inp} font-mono tracking-wider uppercase" value="${esc(existing?.confirmationNumber || '')}" />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-white/65 mb-1">Booking / Ticket Link</label>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Booking / Official Link</label>
               <input id="rUrl" type="url" placeholder="https://..." class="${inp}" value="${esc(existing?.bookingUrl || '')}" />
             </div>
           </div>
@@ -956,83 +954,6 @@ export function openChecklistCategoryModal(groupId = null) {
     const inputEl = document.getElementById('catTitleInput');
     if (inputEl) inputEl.focus();
   }, 100);
-}
-
-/**
- * Add or Edit Official Link Modal
- */
-export function openLinkModal(linkId = null) {
-  const state = appStore.state;
-  const existing = linkId ? state.links.find((l) => l.id === linkId) : null;
-  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40';
-  const iconOptions = Object.entries(LINK_ICON_META)
-    .map(([k, v]) => `<option value="${k}" class="bg-slate-900" ${(existing?.icon || 'ticket') === k ? 'selected' : ''}>${v.label}</option>`)
-    .join('');
-
-  openModal({
-    title: existing ? 'Edit Official Link' : 'Add Official Link',
-    bodyHtml: `
-      <div class="space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Link Label</label>
-            <input id="lLabel" placeholder="e.g. Aerial Tramway" class="${inp}" value="${esc(existing ? existing.label : '')}" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Icon &amp; Category</label>
-            <select id="lIcon" class="${inp}">${iconOptions}</select>
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-white/60 mb-1">Website URL</label>
-          <input id="lUrl" type="url" placeholder="https://..." class="${inp}" value="${esc(existing ? existing.url : '')}" />
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Location</label>
-            <input id="lLoc" placeholder="e.g. Palm Springs, CA" class="${inp}" value="${esc(existing ? (existing.location || '') : '')}" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-white/60 mb-1">Operating Hours</label>
-            <input id="lHours" placeholder="e.g. Daily 10 AM – 5 PM" class="${inp}" value="${esc(existing ? (existing.hours || '') : '')}" />
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-white/60 mb-1">Important Info / Tips</label>
-          <textarea id="lInfo" rows="2" placeholder="Parking notes, ticket deadlines, dress code, reservation tips..." class="${inp}">${esc(existing ? (existing.info || '') : '')}</textarea>
-        </div>
-      </div>
-    `,
-    footerButtons: [
-      { label: 'Cancel', onClick: closeModal },
-      {
-        label: existing ? 'Save Changes' : 'Add Link',
-        variant: 'primary',
-        onClick: () => {
-          const label = document.getElementById('lLabel').value.trim();
-          let url = document.getElementById('lUrl').value.trim();
-          const icon = document.getElementById('lIcon').value;
-          const location = document.getElementById('lLoc').value.trim();
-          const hours = document.getElementById('lHours').value.trim();
-          const info = document.getElementById('lInfo').value.trim();
-
-          if (!label || !url) return showToast('Please enter label and URL', 'error');
-          if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-
-          if (existing) {
-            Object.assign(existing, { label, url, icon, location, hours, info });
-            showToast('Link updated');
-          } else {
-            state.links.push({ id: uid('l'), label, url, icon, location, hours, info });
-            showToast('Link added');
-          }
-          closeModal();
-          renderLinks();
-          scheduleCloudSave();
-        }
-      }
-    ]
-  });
 }
 
 /**

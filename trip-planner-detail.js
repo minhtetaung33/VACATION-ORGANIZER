@@ -8,6 +8,11 @@ import {
   appStore,
   uid,
   esc,
+  formatBookingDateTime,
+  getBookingLinkLabel,
+  sanitizeRichNotesHtml,
+  plainTextToRichHtml,
+  extractPlainTextFromRichHtml,
   getCategoryMeta,
   getStopMapUrl,
   getStopLocationLabel,
@@ -630,7 +635,7 @@ export function renderItinerary() {
 
 /**
  * ============================================================================
- * UNIFIED RESERVATIONS, BOOKINGS & TRIP NOTES VAULT RENDERER
+ * BOOKI (BOOKINGS, RESERVATIONS & CONFIRMATIONS) RENDERER
  * ============================================================================
  */
 export function renderReservations() {
@@ -785,8 +790,8 @@ export function renderReservations() {
   if (list.length === 0) {
     container.innerHTML = `
       <div class="col-span-full rounded-2xl border border-dashed border-white/15 bg-black/25 p-6 sm:p-8 text-center space-y-3">
-        <div class="mx-auto w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500/20 to-sky-500/20 border border-white/15 flex items-center justify-center text-sky-300">
-          ${ICONS.ticket}
+        <div class="mx-auto w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500/20 to-sky-500/20 border border-white/15 flex items-center justify-center">
+          ${ICONS.booki}
         </div>
         <div class="space-y-1">
           <div class="text-sm font-semibold text-white">No Bookings Added Yet</div>
@@ -838,7 +843,10 @@ export function renderReservations() {
     const statusMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
     const isCancelled = res.status === 'cancelled';
     const mapUrl = res.location ? getStopMapUrl(res.location) : '';
-    const hasTimes = Boolean(res.checkIn || res.checkOut);
+    const displayStart = formatBookingDateTime(res.startDate, res.startTime, res.checkIn);
+    const displayEnd = formatBookingDateTime(res.endDate, res.endTime, res.checkOut);
+    const hasTimes = Boolean(displayStart || displayEnd);
+    const linkTitle = getBookingLinkLabel(res);
 
     return `
       <article
@@ -875,19 +883,19 @@ export function renderReservations() {
             </button>
           </div>
 
-          <!-- Dynamic Check-In / Check-Out (or Departure / Arrival, Pick-Up / Drop-Off) -->
+          <!-- Formatted Calendar Start / End Date & Time Blocks -->
           ${hasTimes ? `
-            <div class="grid ${res.checkIn && res.checkOut ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
-              ${res.checkIn ? `
+            <div class="grid ${displayStart && displayEnd ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
+              ${displayStart ? `
                 <div class="rounded-xl bg-black/35 border border-white/10 px-2.5 py-2 min-w-0">
                   <div class="text-[9px] font-bold uppercase tracking-wider text-sky-300/85">${esc(typeMeta.startLabel)}</div>
-                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(res.checkIn)}</div>
+                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(displayStart)}</div>
                 </div>
               ` : ''}
-              ${res.checkOut ? `
+              ${displayEnd ? `
                 <div class="rounded-xl bg-black/35 border border-white/10 px-2.5 py-2 min-w-0">
                   <div class="text-[9px] font-bold uppercase tracking-wider text-orange-300/85">${esc(typeMeta.endLabel)}</div>
-                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(res.checkOut)}</div>
+                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(displayEnd)}</div>
                 </div>
               ` : ''}
             </div>
@@ -913,7 +921,7 @@ export function renderReservations() {
           ` : ''}
         </div>
 
-        <!-- Card Footer: Confirmation Code Chip, Booking Link, Edit & Delete -->
+        <!-- Card Footer: Confirmation Code Chip, Custom Link Title Button, Edit & Delete -->
         <div class="pt-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
           <div class="flex flex-wrap items-center gap-1.5 min-w-0">
             ${res.confirmationNumber ? `
@@ -940,11 +948,11 @@ export function renderReservations() {
                 href="${esc(res.bookingUrl)}"
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Open booking or official page"
-                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-orange-500/25 border border-white/15 hover:border-orange-400/40 text-[11px] font-semibold text-white/90 hover:text-white transition-all shrink-0"
+                title="Open ${esc(linkTitle)}"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-orange-500/25 border border-white/15 hover:border-orange-400/40 text-[11px] font-semibold text-white/95 hover:text-white transition-all max-w-[170px]"
               >
-                <span>Open</span>
-                <span class="opacity-75">${ICONS.link}</span>
+                <span class="truncate">${esc(linkTitle)}</span>
+                <span class="opacity-75 shrink-0">${ICONS.link}</span>
               </a>
             ` : ''}
           </div>
@@ -976,6 +984,576 @@ export function renderReservations() {
   container.querySelectorAll('[data-del-res]').forEach((btn) => {
     btn.addEventListener('click', () => detailHooks.deleteReservation(btn.dataset.delRes));
   });
+}
+
+/**
+ * ============================================================================
+ * NOTION / WORD-STYLE RICH-TEXT NOTES EDITOR ENGINE
+ * ============================================================================
+ */
+const RTE_TEXT_SWATCHES = [
+  { color: '#f8fafc', label: 'White' },
+  { color: '#cbd5e1', label: 'Soft Gray' },
+  { color: '#7dd3fc', label: 'Sky Blue' },
+  { color: '#6ee7b7', label: 'Emerald' },
+  { color: '#fcd34d', label: 'Amber' },
+  { color: '#fdba74', label: 'Orange' },
+  { color: '#fda4af', label: 'Rose' },
+  { color: '#c4b5fd', label: 'Violet' },
+  { color: '#67e8f9', label: 'Cyan' },
+  { color: '#bef264', label: 'Lime' },
+  { color: '#f9a8d4', label: 'Pink' },
+  { color: '#f87171', label: 'Coral Red' }
+];
+
+const RTE_HIGHLIGHT_SWATCHES = [
+  { color: 'rgba(245, 158, 11, 0.34)', preview: '#f59e0b', label: 'Amber Glow' },
+  { color: 'rgba(56, 189, 248, 0.32)', preview: '#38bdf8', label: 'Sky Glow' },
+  { color: 'rgba(16, 185, 129, 0.32)', preview: '#10b981', label: 'Mint Glow' },
+  { color: 'rgba(244, 63, 94, 0.32)', preview: '#f43f5e', label: 'Rose Glow' },
+  { color: 'rgba(139, 92, 246, 0.35)', preview: '#8b5cf6', label: 'Violet Glow' },
+  { color: 'rgba(249, 115, 22, 0.35)', preview: '#f97316', label: 'Sunset Glow' },
+  { color: 'rgba(250, 204, 21, 0.32)', preview: '#facc15', label: 'Yellow Marker' },
+  { color: 'rgba(20, 184, 166, 0.32)', preview: '#14b8a6', label: 'Teal Glow' },
+  { color: 'rgba(236, 72, 153, 0.32)', preview: '#ec4899', label: 'Pink Marker' },
+  { color: 'rgba(148, 163, 184, 0.30)', preview: '#94a3b8', label: 'Slate Shade' },
+  { color: 'rgba(59, 130, 246, 0.34)', preview: '#3b82f6', label: 'Cobalt Glow' },
+  { color: 'transparent', preview: 'transparent', label: 'No Highlight' }
+];
+
+let rteInitialized = false;
+let savedNotesRange = null;
+
+function hexToRgbaHighlight(hex, alpha = 0.36) {
+  const clean = String(hex || '').replace('#', '').trim();
+  if (clean.length !== 6) return hex;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getNotesEditorEl() {
+  return document.getElementById('notesEditor');
+}
+
+function saveNotesSelection() {
+  const editor = getNotesEditorEl();
+  const sel = window.getSelection();
+  if (!editor || !sel || sel.rangeCount === 0) return;
+  const range = sel.getRangeAt(0);
+  if (editor.contains(range.commonAncestorContainer)) {
+    savedNotesRange = range.cloneRange();
+  }
+}
+
+function restoreNotesSelection() {
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+  editor.focus();
+  if (!savedNotesRange) return;
+  if (!editor.contains(savedNotesRange.commonAncestorContainer)) {
+    savedNotesRange = null;
+    return;
+  }
+  const sel = window.getSelection();
+  if (!sel) return;
+  sel.removeAllRanges();
+  sel.addRange(savedNotesRange);
+}
+
+function placeCaretInsideNode(node, atEnd = true) {
+  const sel = window.getSelection();
+  if (!sel || !node) return;
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  range.collapse(!atEnd);
+  sel.removeAllRanges();
+  sel.addRange(range);
+  savedNotesRange = range.cloneRange();
+}
+
+function syncCheckboxesToAttributes(editor) {
+  if (!editor) return;
+  editor.querySelectorAll('input[type="checkbox"]').forEach((chk) => {
+    chk.classList.add('rte-checkbox');
+    chk.setAttribute('contenteditable', 'false');
+    if (chk.checked) chk.setAttribute('checked', 'checked');
+    else chk.removeAttribute('checked');
+    const item = chk.closest('.rte-check-item');
+    if (item) item.classList.toggle('is-checked', chk.checked);
+  });
+}
+
+function syncAttributesToCheckboxes(editor) {
+  if (!editor) return;
+  editor.querySelectorAll('input[type="checkbox"]').forEach((chk) => {
+    const isChecked = chk.hasAttribute('checked');
+    chk.checked = isChecked;
+    chk.classList.add('rte-checkbox');
+    chk.setAttribute('contenteditable', 'false');
+    const item = chk.closest('.rte-check-item');
+    if (item) item.classList.toggle('is-checked', isChecked);
+  });
+}
+
+function updateNotesMetaCount(plainText) {
+  const metaEl = document.getElementById('notesMeta');
+  if (!metaEl) return;
+  const len = String(plainText || '').length;
+  metaEl.textContent = `${len} character${len === 1 ? '' : 's'}`;
+}
+
+function persistRichNotesFromEditor() {
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+
+  syncCheckboxesToAttributes(editor);
+
+  // Clean empty placeholder residue so CSS :empty placeholder displays nicely
+  const rawHtml = editor.innerHTML;
+  const plain = extractPlainTextFromRichHtml(rawHtml);
+  const hasChecklist = Boolean(editor.querySelector('.rte-check-item'));
+
+  if (!plain && !hasChecklist) {
+    if (editor.innerHTML !== '') editor.innerHTML = '';
+    appStore.state.notesHtml = '';
+    appStore.state.notes = '';
+  } else {
+    const safeHtml = sanitizeRichNotesHtml(rawHtml);
+    appStore.state.notesHtml = safeHtml;
+    appStore.state.notes = plain;
+  }
+
+  updateNotesMetaCount(appStore.state.notes);
+  scheduleCloudSave();
+}
+
+function createChecklistItemElement(initialText = '') {
+  const li = document.createElement('li');
+  li.className = 'rte-check-item';
+
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.className = 'rte-checkbox';
+  chk.setAttribute('contenteditable', 'false');
+  chk.setAttribute('aria-label', 'Toggle checklist item');
+
+  const span = document.createElement('span');
+  span.className = 'rte-check-text';
+  if (initialText) {
+    span.textContent = initialText;
+  } else {
+    span.innerHTML = '<br>';
+  }
+
+  li.appendChild(chk);
+  li.appendChild(span);
+  return li;
+}
+
+function insertInteractiveChecklist() {
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+  restoreNotesSelection();
+
+  const sel = window.getSelection();
+  const anchorNode = sel?.anchorNode || null;
+  const existingItem = anchorNode
+    ? (anchorNode.nodeType === Node.ELEMENT_NODE ? anchorNode : anchorNode.parentElement)?.closest('.rte-check-item')
+    : null;
+
+  if (existingItem) {
+    // Already inside a checklist: insert a fresh checklist item directly below
+    const nextItem = createChecklistItemElement('');
+    existingItem.insertAdjacentElement('afterend', nextItem);
+    placeCaretInsideNode(nextItem.querySelector('.rte-check-text'), false);
+    persistRichNotesFromEditor();
+    return;
+  }
+
+  let selectedText = '';
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    selectedText = sel.toString().trim();
+    sel.getRangeAt(0).deleteContents();
+  }
+
+  const lines = selectedText
+    ? selectedText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+    : [''];
+
+  const ul = document.createElement('ul');
+  ul.className = 'rte-checklist';
+  lines.forEach((line) => ul.appendChild(createChecklistItemElement(line)));
+
+  if (sel && sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    const range = sel.getRangeAt(0);
+    range.collapse(false);
+    range.insertNode(ul);
+  } else {
+    editor.appendChild(ul);
+  }
+
+  const lastTextSpan = ul.lastElementChild?.querySelector('.rte-check-text');
+  if (lastTextSpan) placeCaretInsideNode(lastTextSpan, true);
+  persistRichNotesFromEditor();
+}
+
+function applyRichFontSize(pxSize) {
+  const editor = getNotesEditorEl();
+  if (!editor || !pxSize) return;
+  restoreNotesSelection();
+
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+
+  if (sel.isCollapsed) {
+    const span = document.createElement('span');
+    span.style.fontSize = pxSize;
+    span.appendChild(document.createTextNode('\u200B'));
+    const range = sel.getRangeAt(0);
+    range.insertNode(span);
+    const nextRange = document.createRange();
+    nextRange.setStart(span.firstChild, 1);
+    nextRange.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(nextRange);
+    savedNotesRange = nextRange.cloneRange();
+  } else {
+    try {
+      document.execCommand('styleWithCSS', false, false);
+      document.execCommand('fontSize', false, '7');
+      editor.querySelectorAll('font[size="7"]').forEach((fontEl) => {
+        const span = document.createElement('span');
+        span.style.fontSize = pxSize;
+        while (fontEl.firstChild) span.appendChild(fontEl.firstChild);
+        fontEl.replaceWith(span);
+      });
+      document.execCommand('styleWithCSS', false, true);
+    } catch (err) {
+      // Fallback ignored gracefully
+    }
+    saveNotesSelection();
+  }
+
+  persistRichNotesFromEditor();
+}
+
+function applyRichExecCommand(cmd, value = null) {
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+  restoreNotesSelection();
+  try {
+    document.execCommand('styleWithCSS', false, true);
+    if (cmd === 'hiliteColor') {
+      const ok = document.execCommand('hiliteColor', false, value);
+      if (!ok) document.execCommand('backColor', false, value);
+    } else {
+      document.execCommand(cmd, false, value);
+    }
+  } catch (err) {
+    // Ignore unsupported browser command gracefully
+  }
+  saveNotesSelection();
+  persistRichNotesFromEditor();
+  updateRichToolbarStates();
+}
+
+function updateRichToolbarStates() {
+  const editor = getNotesEditorEl();
+  const sel = window.getSelection();
+  if (!editor || !sel || sel.rangeCount === 0) return;
+  const anchor = sel.anchorNode;
+  if (!anchor || !editor.contains(anchor)) return;
+
+  const commands = ['bold', 'italic', 'underline', 'strikeThrough', 'insertUnorderedList', 'insertOrderedList'];
+  commands.forEach((cmd) => {
+    const btn = document.querySelector(`[data-rte-cmd="${cmd}"]`);
+    if (!btn) return;
+    let active = false;
+    try {
+      active = document.queryCommandState(cmd);
+    } catch (err) {
+      active = false;
+    }
+    btn.classList.toggle('is-active', Boolean(active));
+  });
+
+  const anchorEl = anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement;
+  const inChecklist = Boolean(anchorEl?.closest('.rte-checklist'));
+  document.getElementById('rteChecklistBtn')?.classList.toggle('is-active', inChecklist);
+}
+
+function closeRtePopovers() {
+  document.getElementById('rteTextColorPopover')?.classList.add('hidden');
+  document.getElementById('rteBgColorPopover')?.classList.add('hidden');
+}
+
+export function initRichNotesEditor() {
+  if (rteInitialized) return;
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+  rteInitialized = true;
+
+  // 1. Build Color & Highlight Swatches
+  const textSwatchWrap = document.getElementById('rteTextColorSwatches');
+  const bgSwatchWrap = document.getElementById('rteBgColorSwatches');
+  const textColorBar = document.getElementById('rteTextColorBar');
+  const bgColorBar = document.getElementById('rteBgColorBar');
+
+  if (textSwatchWrap) {
+    textSwatchWrap.innerHTML = RTE_TEXT_SWATCHES.map((sw) => `
+      <button
+        type="button"
+        data-rte-text-swatch="${esc(sw.color)}"
+        title="${esc(sw.label)}"
+        class="rte-swatch"
+        style="background: ${esc(sw.color)};"
+      ></button>
+    `).join('');
+
+    textSwatchWrap.querySelectorAll('[data-rte-text-swatch]').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        const col = btn.dataset.rteTextSwatch;
+        if (textColorBar) textColorBar.style.backgroundColor = col;
+        applyRichExecCommand('foreColor', col);
+        closeRtePopovers();
+      });
+    });
+  }
+
+  if (bgSwatchWrap) {
+    bgSwatchWrap.innerHTML = RTE_HIGHLIGHT_SWATCHES.map((sw) => `
+      <button
+        type="button"
+        data-rte-bg-swatch="${esc(sw.color)}"
+        data-rte-bg-preview="${esc(sw.preview)}"
+        title="${esc(sw.label)}"
+        class="rte-swatch ${sw.color === 'transparent' ? 'relative overflow-hidden bg-black/40' : ''}"
+        style="${sw.color === 'transparent' ? '' : `background: ${esc(sw.preview)};`}"
+      >${sw.color === 'transparent' ? '<span class="block w-full h-[1.5px] bg-rose-400 rotate-45"></span>' : ''}</button>
+    `).join('');
+
+    bgSwatchWrap.querySelectorAll('[data-rte-bg-swatch]').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => {
+        const col = btn.dataset.rteBgSwatch;
+        const prev = btn.dataset.rteBgPreview;
+        if (bgColorBar) bgColorBar.style.backgroundColor = prev === 'transparent' ? 'rgba(255,255,255,0.25)' : prev;
+        applyRichExecCommand('hiliteColor', col);
+        closeRtePopovers();
+      });
+    });
+  }
+
+  // 2. Wire Popover Triggers, Custom Color Inputs & Resets
+  const textPopover = document.getElementById('rteTextColorPopover');
+  const bgPopover = document.getElementById('rteBgColorPopover');
+
+  document.getElementById('rteTextColorBtn')?.addEventListener('mousedown', (e) => e.preventDefault());
+  document.getElementById('rteTextColorBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    saveNotesSelection();
+    bgPopover?.classList.add('hidden');
+    textPopover?.classList.toggle('hidden');
+  });
+
+  document.getElementById('rteBgColorBtn')?.addEventListener('mousedown', (e) => e.preventDefault());
+  document.getElementById('rteBgColorBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    saveNotesSelection();
+    textPopover?.classList.add('hidden');
+    bgPopover?.classList.toggle('hidden');
+  });
+
+  document.getElementById('rteTextColorCustom')?.addEventListener('input', (e) => {
+    const col = e.target.value;
+    if (textColorBar) textColorBar.style.backgroundColor = col;
+    applyRichExecCommand('foreColor', col);
+  });
+
+  document.getElementById('rteBgColorCustom')?.addEventListener('input', (e) => {
+    const hex = e.target.value;
+    if (bgColorBar) bgColorBar.style.backgroundColor = hex;
+    applyRichExecCommand('hiliteColor', hexToRgbaHighlight(hex, 0.36));
+  });
+
+  document.querySelector('[data-rte-reset-text-color]')?.addEventListener('mousedown', (e) => e.preventDefault());
+  document.querySelector('[data-rte-reset-text-color]')?.addEventListener('click', () => {
+    if (textColorBar) textColorBar.style.backgroundColor = '#7dd3fc';
+    applyRichExecCommand('foreColor', '#f8fafc');
+    closeRtePopovers();
+  });
+
+  document.querySelector('[data-rte-reset-bg-color]')?.addEventListener('mousedown', (e) => e.preventDefault());
+  document.querySelector('[data-rte-reset-bg-color]')?.addEventListener('click', () => {
+    if (bgColorBar) bgColorBar.style.backgroundColor = 'rgba(255,255,255,0.25)';
+    applyRichExecCommand('hiliteColor', 'transparent');
+    closeRtePopovers();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#notesToolbar')) {
+      closeRtePopovers();
+    }
+  });
+
+  // 3. Wire Font Family & Font Size Dropdowns
+  const fontFamilySel = document.getElementById('rteFontFamily');
+  const fontSizeSel = document.getElementById('rteFontSize');
+
+  fontFamilySel?.addEventListener('mousedown', saveNotesSelection);
+  fontFamilySel?.addEventListener('change', (e) => {
+    applyRichExecCommand('fontName', e.target.value);
+  });
+
+  fontSizeSel?.addEventListener('mousedown', saveNotesSelection);
+  fontSizeSel?.addEventListener('change', (e) => {
+    applyRichFontSize(e.target.value);
+  });
+
+  // 4. Wire Format Buttons (Bold, Italic, Underline, Strikethrough, Bullets, Numbers)
+  document.querySelectorAll('[data-rte-cmd]').forEach((btn) => {
+    btn.addEventListener('mousedown', (e) => e.preventDefault());
+    btn.addEventListener('click', () => {
+      applyRichExecCommand(btn.dataset.rteCmd);
+    });
+  });
+
+  // 5. Wire Interactive Checklist & Clear Formatting Buttons
+  const checklistBtn = document.getElementById('rteChecklistBtn');
+  checklistBtn?.addEventListener('mousedown', (e) => e.preventDefault());
+  checklistBtn?.addEventListener('click', () => {
+    insertInteractiveChecklist();
+    updateRichToolbarStates();
+  });
+
+  const clearBtn = document.getElementById('rteClearFormatBtn');
+  clearBtn?.addEventListener('mousedown', (e) => e.preventDefault());
+  clearBtn?.addEventListener('click', () => {
+    applyRichExecCommand('removeFormat');
+    applyRichExecCommand('foreColor', '#f8fafc');
+    applyRichExecCommand('hiliteColor', 'transparent');
+  });
+
+  // 6. Wire Editor Events (Typing, Checkboxes, Enter/Backspace in Checklists, Clean Paste)
+  editor.addEventListener('input', () => {
+    saveNotesSelection();
+    persistRichNotesFromEditor();
+  });
+
+  editor.addEventListener('keyup', () => {
+    saveNotesSelection();
+    updateRichToolbarStates();
+  });
+
+  editor.addEventListener('mouseup', () => {
+    saveNotesSelection();
+    updateRichToolbarStates();
+  });
+
+  editor.addEventListener('change', (e) => {
+    const chk = e.target.closest('input[type="checkbox"]');
+    if (!chk) return;
+    const item = chk.closest('.rte-check-item');
+    if (item) item.classList.toggle('is-checked', chk.checked);
+    persistRichNotesFromEditor();
+  });
+
+  editor.addEventListener('keydown', (e) => {
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode || null;
+    const anchorEl = anchor ? (anchor.nodeType === Node.ELEMENT_NODE ? anchor : anchor.parentElement) : null;
+    const checkItem = anchorEl?.closest('.rte-check-item');
+
+    if (checkItem && e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      const textSpan = checkItem.querySelector('.rte-check-text');
+      const currentText = (textSpan?.textContent || '').replace(/\u200B/g, '').trim();
+      const ul = checkItem.closest('.rte-checklist');
+
+      if (!currentText) {
+        // Exit checklist cleanly when pressing Enter on an empty item
+        const p = document.createElement('div');
+        p.innerHTML = '<br>';
+        checkItem.remove();
+        if (ul) {
+          if (ul.children.length === 0) {
+            ul.replaceWith(p);
+          } else {
+            ul.insertAdjacentElement('afterend', p);
+          }
+        } else {
+          editor.appendChild(p);
+        }
+        placeCaretInsideNode(p, false);
+      } else {
+        const nextItem = createChecklistItemElement('');
+        checkItem.insertAdjacentElement('afterend', nextItem);
+        placeCaretInsideNode(nextItem.querySelector('.rte-check-text'), false);
+      }
+      persistRichNotesFromEditor();
+      return;
+    }
+
+    if (checkItem && e.key === 'Backspace') {
+      const textSpan = checkItem.querySelector('.rte-check-text');
+      const currentText = (textSpan?.textContent || '').replace(/\u200B/g, '').trim();
+      if (!currentText) {
+        e.preventDefault();
+        const prevItem = checkItem.previousElementSibling;
+        const ul = checkItem.closest('.rte-checklist');
+        checkItem.remove();
+        if (prevItem && prevItem.classList.contains('rte-check-item')) {
+          placeCaretInsideNode(prevItem.querySelector('.rte-check-text'), true);
+        } else if (ul && ul.children.length === 0) {
+          const p = document.createElement('div');
+          p.innerHTML = '<br>';
+          ul.replaceWith(p);
+          placeCaretInsideNode(p, false);
+        }
+        persistRichNotesFromEditor();
+      }
+    }
+  });
+
+  // Clean plain-text paste so external white backgrounds don't break dark glass styling
+  editor.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (!text) return;
+    document.execCommand('insertText', false, text);
+    persistRichNotesFromEditor();
+  });
+}
+
+/**
+ * Render Rich-Text Personal Trip Notes (Syncs State → Editor Safely)
+ */
+export function renderNotes() {
+  const editor = getNotesEditorEl();
+  if (!editor) return;
+
+  const state = appStore.state;
+  const targetHtml = state.notesHtml
+    ? sanitizeRichNotesHtml(state.notesHtml)
+    : (state.notes ? plainTextToRichHtml(state.notes) : '');
+
+  // Keep state synced if migrating from legacy plain text
+  if (!state.notesHtml && targetHtml) {
+    state.notesHtml = targetHtml;
+  }
+
+  const isFocused = document.activeElement === editor;
+  if (!isFocused && editor.innerHTML !== targetHtml) {
+    editor.innerHTML = targetHtml;
+    syncAttributesToCheckboxes(editor);
+  }
+
+  const plain = targetHtml ? extractPlainTextFromRichHtml(targetHtml) : (state.notes || '');
+  state.notes = plain;
+  updateNotesMetaCount(plain);
 }
 
 /**
@@ -1449,17 +2027,6 @@ export function renderBudget() {
 }
 
 /**
- * Render Personal Trip Notes
- */
-export function renderNotes() {
-  const el = document.getElementById('notesInput');
-  if (!el) return;
-  el.value = appStore.state.notes;
-  const metaEl = document.getElementById('notesMeta');
-  if (metaEl) metaEl.textContent = `${appStore.state.notes.length} characters`;
-}
-
-/**
  * Master Render Function (Refreshes All Dashboard Sections)
  */
 export function renderAll() {
@@ -1475,7 +2042,7 @@ export function renderAll() {
 
 /**
  * ============================================================================
- * GLASSMORPHISM SPATIAL PDF ENGINE (Includes Reservations Vault, Categories & Travel)
+ * GLASSMORPHISM SPATIAL PDF ENGINE (Includes Booki, Custom Categories & Travel)
  * ============================================================================
  */
 function loadImageForCanvas(url, timeoutMs = 4500) {
@@ -2092,8 +2659,8 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     }
   });
 
-  // ==================== RESERVATIONS & TRIP VAULT GLASS MODULE ====================
-  onProgress(74, 'Crafting reservations vault, budget & checklist...', 3);
+  // ==================== BOOKI GLASS MODULE ====================
+  onProgress(74, 'Crafting Booki bookings, budget & checklist...', 3);
   const reservationsList = Array.isArray(state.reservations) ? state.reservations : [];
   if (reservationsList.length > 0) {
     ensureSpace(88);
@@ -2102,9 +2669,9 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     const xCount = reservationsList.filter((r) => r.status === 'cancelled').length;
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
+    doc.setFontSize(12.5);
     doc.setTextColor(255, 255, 255);
-    doc.text(`Reservations & Trip Vault (${reservationsList.length})`, margin + 6, y + 18);
+    doc.text(`Booki (${reservationsList.length})`, margin + 6, y + 18);
 
     drawGlassPill(
       doc,
@@ -2127,9 +2694,11 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
       const tMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
       const sMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
 
+      const startFmt = formatBookingDateTime(res.startDate, res.startTime, res.checkIn);
+      const endFmt = formatBookingDateTime(res.endDate, res.endTime, res.checkOut);
       const timeSegments = [];
-      if (res.checkIn) timeSegments.push(`${tMeta.startLabel}: ${res.checkIn}`);
-      if (res.checkOut) timeSegments.push(`${tMeta.endLabel}: ${res.checkOut}`);
+      if (startFmt) timeSegments.push(`${tMeta.startLabel}: ${startFmt}`);
+      if (endFmt) timeSegments.push(`${tMeta.endLabel}: ${endFmt}`);
       const timeLine = pdfSafeText(timeSegments.join('   •   '));
 
       const metaSegments = [];
@@ -2137,9 +2706,10 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
       if (res.location) metaSegments.push(res.location);
       const metaLine = pdfSafeText(metaSegments.join('  •  '));
 
+      const linkLabel = getBookingLinkLabel(res);
       const confUrlLine = [
         res.confirmationNumber ? `Conf #: ${res.confirmationNumber}` : '',
-        res.bookingUrl ? res.bookingUrl : ''
+        res.bookingUrl ? `${linkLabel}: ${res.bookingUrl}` : ''
       ].filter(Boolean).join('   •   ');
 
       doc.setFont('helvetica', 'normal');
@@ -2468,8 +3038,12 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
   });
 
   // ==================== PERSONAL TRIP NOTES GLASS CARD ====================
-  if (state.notes.trim()) {
-    const noteLines = doc.splitTextToSize(pdfSafeText(state.notes.trim()), contentW - 36);
+  const notesPlain = state.notesHtml
+    ? extractPlainTextFromRichHtml(state.notesHtml)
+    : String(state.notes || '').trim();
+
+  if (notesPlain) {
+    const noteLines = doc.splitTextToSize(pdfSafeText(notesPlain), contentW - 36);
     const noteCardH = noteLines.length * 12 + 42;
     ensureSpace(Math.min(noteCardH + 12, 130));
 
@@ -2488,7 +3062,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11.5);
     doc.setTextColor(255, 255, 255);
-    doc.text('Personal Trip Notes & Reminders', margin + 18, y + 30);
+    doc.text('Personal Trip Notes & Quick Reminders', margin + 18, y + 30);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.8);
@@ -2545,7 +3119,7 @@ export async function openSavePdfFlow() {
 
         <div>
           <h4 id="pdfStatusTitle" class="text-base font-semibold text-white">Capturing your live landscape backdrop...</h4>
-          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, reservations, budget &amp; notes</p>
+          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, Booki bookings, budget &amp; notes</p>
         </div>
 
         <div class="relative h-2.5 w-full rounded-full bg-white/10 overflow-hidden">

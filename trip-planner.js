@@ -6,9 +6,41 @@ import {
 } from './trip-timeline-engine.js';
 
 /**
- * Crisp Inline SVG Icon Library
+ * Crisp Inline SVG Icon Library (Including Cute Booki Mascot & Rich-Text Icons)
  */
 export const ICONS = {
+  booki: `<svg viewBox="0 0 32 32" fill="none" class="w-6 h-6">
+    <defs>
+      <linearGradient id="bookiBodyGrad" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#fb923c" />
+        <stop offset="52%" stop-color="#f472b6" />
+        <stop offset="100%" stop-color="#38bdf8" />
+      </linearGradient>
+    </defs>
+    <!-- Cute Bookmark Ribbon -->
+    <path d="M19.5 3.5h5v6.5l-2.5-1.8-2.5 1.8V3.5Z" fill="#fde047" stroke="#fef08a" stroke-width="0.8" stroke-linejoin="round"/>
+    <!-- Rounded Notebook / Pass Body -->
+    <rect x="5" y="6" width="22" height="22" rx="6.5" fill="url(#bookiBodyGrad)" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>
+    <!-- Soft Glass Shine -->
+    <path d="M9.5 8.5h7" stroke="rgba(255,255,255,0.55)" stroke-width="1.4" stroke-linecap="round"/>
+    <!-- Cute Smiling Face -->
+    <circle cx="12.2" cy="16.4" r="1.45" fill="#0f172a"/>
+    <circle cx="19.8" cy="16.4" r="1.45" fill="#0f172a"/>
+    <circle cx="12.7" cy="15.9" r="0.45" fill="#ffffff"/>
+    <circle cx="20.3" cy="15.9" r="0.45" fill="#ffffff"/>
+    <!-- Rosy Cheeks -->
+    <ellipse cx="9.8" cy="18.6" rx="1.5" ry="0.9" fill="rgba(255,228,230,0.65)"/>
+    <ellipse cx="22.2" cy="18.6" rx="1.5" ry="0.9" fill="rgba(255,228,230,0.65)"/>
+    <!-- Happy Smile -->
+    <path d="M13.6 19.6c1.2 1.5 3.6 1.5 4.8 0" stroke="#0f172a" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- Little Sparkle -->
+    <path d="M26.5 22.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4Z" fill="#fef08a"/>
+  </svg>`,
+  highlighter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>`,
+  listBullet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor"/></svg>`,
+  listNumber: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>`,
+  checklist: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3" y="5" width="6" height="6" rx="1.2"/><path d="m4.5 8 1.2 1.2 2-2.2"/><line x1="12" y1="8" x2="21" y2="8"/><rect x="3" y="14" width="6" height="6" rx="1.2"/><line x1="12" y1="17" x2="21" y2="17"/></svg>`,
+  clearFormat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 7V4h16v3"/><path d="M5 20h6"/><path d="M13 4 8 20"/><path d="m15 15 5 5"/><path d="m20 15-5 5"/></svg>`,
   plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
@@ -67,7 +99,7 @@ export const ICONS = {
 };
 
 /**
- * Reservations & Bookings Vault Categories (Dynamic Labels & Color Themes)
+ * Booki Categories (Dynamic Labels, Placeholders & Color Themes)
  */
 export const RESERVATION_TYPE_META = {
   hotel: {
@@ -82,8 +114,7 @@ export const RESERVATION_TYPE_META = {
     locationPlaceholder: 'e.g. 3649 Mission Inn Ave, Riverside, CA',
     startLabel: 'Check-In',
     endLabel: 'Check-Out',
-    startPlaceholder: 'e.g. Fri, Nov 27 · 3:00 PM',
-    endPlaceholder: 'e.g. Sat, Nov 28 · 11:00 AM',
+    linkLabelPlaceholder: 'e.g. Marriott, Airbnb',
     codePlaceholder: 'e.g. HTL-849201',
     notePlaceholder: 'e.g. Early check-in requested, door code #4821, parking pass...'
   },
@@ -99,8 +130,7 @@ export const RESERVATION_TYPE_META = {
     locationPlaceholder: 'e.g. Los Angeles (LAX) → Palm Springs (PSP)',
     startLabel: 'Departure',
     endLabel: 'Arrival',
-    startPlaceholder: 'e.g. Fri, Nov 27 · 10:15 AM',
-    endPlaceholder: 'e.g. Fri, Nov 27 · 11:40 AM',
+    linkLabelPlaceholder: 'e.g. Delta Check-In',
     codePlaceholder: 'e.g. PNR-X7K9M2',
     notePlaceholder: 'e.g. Boarding Group 2, 1 carry-on + stroller gate check...'
   },
@@ -116,8 +146,7 @@ export const RESERVATION_TYPE_META = {
     locationPlaceholder: 'e.g. PSP Airport Rental Center',
     startLabel: 'Pick-Up',
     endLabel: 'Drop-Off',
-    startPlaceholder: 'e.g. Fri, Nov 27 · 12:00 PM',
-    endPlaceholder: 'e.g. Mon, Nov 30 · 6:00 PM',
+    linkLabelPlaceholder: 'e.g. Enterprise, Turo',
     codePlaceholder: 'e.g. CAR-559012',
     notePlaceholder: 'e.g. Full-to-full fuel policy, car seat requested, Skip the Counter...'
   },
@@ -132,9 +161,8 @@ export const RESERVATION_TYPE_META = {
     providerPlaceholder: 'e.g. OpenTable · Party of 3 (2 Adults, 1 Infant)',
     locationPlaceholder: 'e.g. Mountain Station, Palm Springs, CA',
     startLabel: 'Reservation',
-    endLabel: 'Window / End',
-    startPlaceholder: 'e.g. Sun, Nov 29 · 5:15 PM',
-    endPlaceholder: 'e.g. 6:45 PM (Optional)',
+    endLabel: 'End Time',
+    linkLabelPlaceholder: 'e.g. Peaks Dining, Menu',
     codePlaceholder: 'e.g. OT-39284',
     notePlaceholder: 'e.g. Window table requested, high chair needed, 15-min grace period...'
   },
@@ -148,10 +176,9 @@ export const RESERVATION_TYPE_META = {
     titlePlaceholder: 'e.g. WildLights Day + Night Bundle · Tramway',
     providerPlaceholder: 'e.g. Official Site · 2 Adults, 1 Infant (Free)',
     locationPlaceholder: 'e.g. The Living Desert Zoo, Palm Desert, CA',
-    startLabel: 'Entry / Hours',
-    endLabel: 'Exit / Ends',
-    startPlaceholder: 'e.g. Sat, Nov 28 · 1:30 PM',
-    endPlaceholder: 'e.g. WildLights 6:00–9:00 PM',
+    startLabel: 'Start / Entry',
+    endLabel: 'End / Exit',
+    linkLabelPlaceholder: 'e.g. Tram, 123 Farm',
     codePlaceholder: 'e.g. TKT-904821',
     notePlaceholder: 'e.g. Mobile QR code saved in Apple Wallet, arrive 15 mins early...'
   }
@@ -417,7 +444,7 @@ export function registerPlannerHooks(overrides = {}) {
 }
 
 /**
- * Utilities: ID generator, HTML Escaping, Coordinate Normalization, Category, Budget, Reservations & Maps Helpers
+ * Utilities: ID generator, HTML Escaping, Coordinate Normalization, Booki Date/Time & Rich Notes Helpers
  */
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -441,9 +468,144 @@ export function normalizeLocationCoords(coords) {
   return { lat, lng };
 }
 
+/**
+ * Booki Date & Time Formatting / Legacy Parsing Helpers
+ */
+const BOOKI_DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const BOOKI_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const BOOKI_MONTH_MAP = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12
+};
+
+export function formatBookingTime12h(timeStr) {
+  const m = String(timeStr || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return '';
+  let h = Number(m[1]);
+  const mins = m[2];
+  if (h < 0 || h > 23) return '';
+  const period = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${mins} ${period}`;
+}
+
+export function formatBookingDate(dateStr) {
+  const m = String(dateStr || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const yr = Number(m[1]);
+  const mo = Number(m[2]);
+  const da = Number(m[3]);
+  const dt = new Date(yr, mo - 1, da);
+  if (Number.isNaN(dt.getTime())) return '';
+  return `${BOOKI_DAY_NAMES[dt.getDay()]}, ${BOOKI_MONTH_NAMES[dt.getMonth()]} ${dt.getDate()}`;
+}
+
+export function formatBookingDateTime(dateStr, timeStr, fallbackText = '') {
+  const dPart = formatBookingDate(dateStr);
+  const tPart = formatBookingTime12h(timeStr);
+  if (dPart && tPart) return `${dPart} · ${tPart}`;
+  if (dPart) return dPart;
+  if (tPart) return tPart;
+  return String(fallbackText || '').trim();
+}
+
+export function parseLegacyBookingDateTime(rawText, defaultYear = new Date().getFullYear()) {
+  const text = String(rawText || '').trim();
+  if (!text) return { date: '', time: '' };
+
+  let date = '';
+  let time = '';
+
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    date = `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+  } else {
+    const monMatch = text.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:,?\s*(\d{4}))?/i);
+    if (monMatch) {
+      const mo = BOOKI_MONTH_MAP[monMatch[1].toLowerCase()];
+      const da = Number(monMatch[2]);
+      const yr = monMatch[3] ? Number(monMatch[3]) : defaultYear;
+      if (mo && da >= 1 && da <= 31) {
+        date = `${yr}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  const timeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (timeMatch) {
+    let h = Number(timeMatch[1]);
+    const mins = timeMatch[2] ? Number(timeMatch[2]) : 0;
+    const mer = timeMatch[3].toUpperCase();
+    if (mer === 'AM') {
+      if (h === 12) h = 0;
+    } else if (mer === 'PM') {
+      if (h !== 12) h += 12;
+    }
+    if (h >= 0 && h <= 23 && mins >= 0 && mins <= 59) {
+      time = `${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    }
+  }
+
+  return { date, time };
+}
+
+/**
+ * Custom Link Label Helper (Displays "Tram", "123 Farm", etc. Instead of Generic "Open")
+ */
+export function getBookingLinkLabel(res) {
+  const custom = String(res?.bookingLinkLabel || '').trim();
+  if (custom) return custom;
+
+  const title = String(res?.title || '').trim();
+  if (title) {
+    const cleaned = title
+      .split(/[·–—|(]/)[0]
+      .replace(/\b(tickets?|info|reservation|booking|bundle|day\s*\+\s*night|christmas\s*nights|festival\s*of\s*lights|sunset\s*dinner)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const chosen = cleaned || title;
+    return chosen.length > 22 ? `${chosen.slice(0, 20).trim()}…` : chosen;
+  }
+
+  const url = String(res?.bookingUrl || '').trim();
+  if (url) {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./i, '').split('.')[0];
+      if (host) return host.charAt(0).toUpperCase() + host.slice(1);
+    } catch (err) {
+      // Fallback below
+    }
+  }
+  return 'Website';
+}
+
 export function normalizeReservationItem(raw) {
   const type = RESERVATION_TYPE_META[raw?.type] ? raw.type : 'hotel';
   const status = RESERVATION_STATUS_META[raw?.status] ? raw.status : 'pending';
+
+  let startDate = String(raw?.startDate || '').trim();
+  let startTime = String(raw?.startTime || '').trim();
+  let endDate = String(raw?.endDate || '').trim();
+  let endTime = String(raw?.endTime || '').trim();
+
+  const rawCheckIn = String(raw?.checkIn || '').trim();
+  const rawCheckOut = String(raw?.checkOut || '').trim();
+
+  if (!startDate && !startTime && rawCheckIn) {
+    const parsedIn = parseLegacyBookingDateTime(rawCheckIn, 2026);
+    startDate = parsedIn.date;
+    startTime = parsedIn.time;
+  }
+  if (!endDate && !endTime && rawCheckOut) {
+    const parsedOut = parseLegacyBookingDateTime(rawCheckOut, 2026);
+    endDate = parsedOut.date;
+    endTime = parsedOut.time;
+  }
+
+  const checkIn = formatBookingDateTime(startDate, startTime, rawCheckIn);
+  const checkOut = formatBookingDateTime(endDate, endTime, rawCheckOut);
+
   return {
     id: raw?.id || uid('res'),
     type,
@@ -451,12 +613,217 @@ export function normalizeReservationItem(raw) {
     title: String(raw?.title || '').trim(),
     provider: String(raw?.provider || '').trim(),
     location: String(raw?.location || '').trim(),
-    checkIn: String(raw?.checkIn || '').trim(),
-    checkOut: String(raw?.checkOut || '').trim(),
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    checkIn,
+    checkOut,
     confirmationNumber: String(raw?.confirmationNumber || '').trim(),
     bookingUrl: String(raw?.bookingUrl || '').trim(),
+    bookingLinkLabel: String(raw?.bookingLinkLabel || '').trim(),
     notes: String(raw?.notes || '').trim()
   };
+}
+
+/**
+ * Rich-Text Notes Sanitization & Plain-Text Conversion Helpers
+ */
+export function plainTextToRichHtml(plainText) {
+  const text = String(plainText || '');
+  if (!text.trim()) return '';
+  return text
+    .split(/\r?\n/)
+    .map((line) => (line ? `<div>${esc(line)}</div>` : '<div><br></div>'))
+    .join('');
+}
+
+export function sanitizeRichNotesHtml(rawHtml) {
+  const html = String(rawHtml || '').trim();
+  if (!html) return '';
+
+  const template = document.createElement('template');
+  template.innerHTML = html;
+
+  const allowedTags = new Set([
+    'DIV', 'P', 'BR', 'SPAN', 'FONT', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'STRIKE', 'DEL',
+    'UL', 'OL', 'LI', 'INPUT', 'LABEL', 'A', 'H1', 'H2', 'H3', 'BLOCKQUOTE'
+  ]);
+  const allowedStyleProps = new Set([
+    'font-family', 'font-size', 'color', 'background-color', 'font-weight',
+    'font-style', 'text-decoration', 'text-decoration-line'
+  ]);
+
+  const cleanNode = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) return;
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      node.remove();
+      return;
+    }
+
+    const tag = node.tagName.toUpperCase();
+    if (['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'FORM'].includes(tag)) {
+      node.remove();
+      return;
+    }
+
+    if (!allowedTags.has(tag)) {
+      const parent = node.parentNode;
+      while (node.firstChild) parent.insertBefore(node.firstChild, node);
+      node.remove();
+      return;
+    }
+
+    // Strip dangerous attributes & event handlers
+    Array.from(node.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on')) {
+        node.removeAttribute(attr.name);
+        return;
+      }
+
+      if (name === 'style') {
+        const safeRules = [];
+        attr.value.split(';').forEach((rule) => {
+          const idx = rule.indexOf(':');
+          if (idx <= 0) return;
+          const prop = rule.slice(0, idx).trim().toLowerCase();
+          const val = rule.slice(idx + 1).trim();
+          if (allowedStyleProps.has(prop) && val && !/expression|url\s*\(|javascript:/i.test(val)) {
+            safeRules.push(`${prop}: ${val}`);
+          }
+        });
+        if (safeRules.length) node.setAttribute('style', safeRules.join('; '));
+        else node.removeAttribute('style');
+        return;
+      }
+
+      if (tag === 'INPUT') {
+        if (!['type', 'checked', 'class', 'aria-label'].includes(name)) {
+          node.removeAttribute(attr.name);
+        }
+        return;
+      }
+
+      if (tag === 'A') {
+        if (name === 'href') {
+          if (!/^https?:\/\//i.test(attr.value.trim())) node.removeAttribute('href');
+          else {
+            node.setAttribute('target', '_blank');
+            node.setAttribute('rel', 'noopener noreferrer');
+          }
+        } else if (!['target', 'rel', 'class', 'style'].includes(name)) {
+          node.removeAttribute(attr.name);
+        }
+        return;
+      }
+
+      if (tag === 'FONT') {
+        if (!['face', 'size', 'color', 'style'].includes(name)) node.removeAttribute(attr.name);
+        return;
+      }
+
+      if (name === 'class') {
+        const safeClasses = attr.value
+          .split(/\s+/)
+          .filter((c) => ['rte-checklist', 'rte-check-item', 'is-checked', 'rte-checkbox', 'rte-check-text'].includes(c));
+        if (safeClasses.length) node.setAttribute('class', safeClasses.join(' '));
+        else node.removeAttribute('class');
+        return;
+      }
+
+      if (name === 'contenteditable') {
+        if (attr.value !== 'false') node.removeAttribute('contenteditable');
+        return;
+      }
+
+      node.removeAttribute(attr.name);
+    });
+
+    if (tag === 'INPUT') {
+      node.setAttribute('type', 'checkbox');
+      node.classList.add('rte-checkbox');
+    }
+
+    Array.from(node.childNodes).forEach(cleanNode);
+  };
+
+  Array.from(template.content.childNodes).forEach(cleanNode);
+  return template.innerHTML;
+}
+
+export function extractPlainTextFromRichHtml(rawHtml) {
+  const html = String(rawHtml || '').trim();
+  if (!html) return '';
+  const container = document.createElement('div');
+  container.innerHTML = html;
+
+  const lines = [];
+  const walk = (node, listContext = null) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent || '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.tagName.toUpperCase();
+
+    if (tag === 'BR') return '\n';
+
+    if (tag === 'UL' && node.classList.contains('rte-checklist')) {
+      Array.from(node.children).forEach((li) => {
+        const chk = li.querySelector('input[type="checkbox"]');
+        const txtEl = li.querySelector('.rte-check-text') || li;
+        const txt = (txtEl.textContent || '').replace(/\u200B/g, '').trim();
+        if (txt) lines.push(`${chk?.checked ? '[x]' : '[ ]'} ${txt}`);
+      });
+      return '';
+    }
+
+    if (tag === 'UL') {
+      Array.from(node.children).forEach((li) => {
+        const txt = (li.textContent || '').replace(/\u200B/g, '').trim();
+        if (txt) lines.push(`• ${txt}`);
+      });
+      return '';
+    }
+
+    if (tag === 'OL') {
+      let num = 1;
+      Array.from(node.children).forEach((li) => {
+        const txt = (li.textContent || '').replace(/\u200B/g, '').trim();
+        if (txt) lines.push(`${num++}. ${txt}`);
+      });
+      return '';
+    }
+
+    if (['DIV', 'P', 'H1', 'H2', 'H3', 'BLOCKQUOTE', 'LI'].includes(tag)) {
+      const hasNestedBlocks = Array.from(node.children).some((ch) =>
+        ['DIV', 'P', 'UL', 'OL', 'H1', 'H2', 'H3'].includes(ch.tagName.toUpperCase())
+      );
+      if (hasNestedBlocks) {
+        Array.from(node.childNodes).forEach((ch) => {
+          const piece = walk(ch, listContext);
+          if (piece && piece.trim()) lines.push(piece.trim());
+        });
+        return '';
+      }
+      const txt = (node.textContent || '').replace(/\u200B/g, '').trim();
+      lines.push(txt);
+      return '';
+    }
+
+    let acc = '';
+    Array.from(node.childNodes).forEach((ch) => {
+      acc += walk(ch, listContext);
+    });
+    return acc;
+  };
+
+  Array.from(container.childNodes).forEach((ch) => {
+    const out = walk(ch);
+    if (out && out.trim()) lines.push(out.trim());
+  });
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function convertLegacyLinkToReservation(lk) {
@@ -479,6 +846,7 @@ function convertLegacyLinkToReservation(lk) {
     checkOut: '',
     confirmationNumber: '',
     bookingUrl: lk.url || '',
+    bookingLinkLabel: lk.label,
     notes: lk.info || ''
   });
 }
@@ -664,7 +1032,7 @@ export function openConfirmDeleteModal({
 }
 
 /**
- * Initial Thanksgiving Getaway Planner State (All Bookings & Official Links Unified in Trip Vault)
+ * Initial Thanksgiving Getaway Planner State (Booki Bookings with Structured Calendar Dates & Link Titles)
  */
 export function createInitialState() {
   const trip = {
@@ -848,125 +1216,153 @@ export function createInitialState() {
       ]
     },
     reservations: [
-      {
+      normalizeReservationItem({
         id: 'res-1',
         type: 'hotel',
         status: 'pending',
         title: 'Riverside Hotel (1 Night)',
         provider: 'Near Downtown Riverside',
         location: 'Downtown Riverside, CA',
-        checkIn: 'Fri, Nov 27 · 5:30 PM',
-        checkOut: 'Sat, Nov 28 · 10:30 AM',
+        startDate: '2026-11-27',
+        startTime: '17:30',
+        endDate: '2026-11-28',
+        endTime: '10:30',
         confirmationNumber: '',
         bookingUrl: '',
+        bookingLinkLabel: '',
         notes: 'Check in first, unload luggage, and rest before Festival of Lights.'
-      },
-      {
+      }),
+      normalizeReservationItem({
         id: 'res-2',
         type: 'hotel',
         status: 'pending',
         title: 'Palm Desert Hotel (2 Nights)',
         provider: 'Close to The Living Desert',
         location: 'Palm Desert, CA',
-        checkIn: 'Sat, Nov 28 · 3:00 PM',
-        checkOut: 'Mon, Nov 30 · 10:30 AM',
+        startDate: '2026-11-28',
+        startTime: '15:00',
+        endDate: '2026-11-30',
+        endTime: '10:30',
         confirmationNumber: '',
         bookingUrl: '',
+        bookingLinkLabel: '',
         notes: 'Ask about early check-in or luggage storage on Saturday around 12:15 PM.'
-      },
-      {
+      }),
+      normalizeReservationItem({
         id: 'res-mission-inn',
         type: 'ticket',
         status: 'pending',
         title: 'Mission Inn Festival of Lights',
         provider: 'Festival & Advance Parking Info',
         location: 'Downtown Riverside, CA',
-        checkIn: 'Fri, Nov 27 · 5:00 PM',
-        checkOut: '11:00 PM',
+        startDate: '2026-11-27',
+        startTime: '17:00',
+        endDate: '2026-11-27',
+        endTime: '23:00',
         confirmationNumber: '',
         bookingUrl: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/',
+        bookingLinkLabel: 'Mission Inn',
         notes: 'Reserve advance parking if possible; closed Thanksgiving & Christmas Day.'
-      },
-      {
+      }),
+      normalizeReservationItem({
         id: 'res-3',
         type: 'ticket',
         status: 'pending',
         title: 'WildLights Day + Night Bundle',
         provider: 'The Living Desert · 2 Adults, 1 Infant',
         location: 'Palm Desert, CA',
-        checkIn: 'Sat, Nov 28 · Zoo until 5:00 PM',
-        checkOut: 'WildLights 6:00–9:00 PM',
+        startDate: '2026-11-28',
+        startTime: '13:30',
+        endDate: '2026-11-28',
+        endTime: '21:00',
         confirmationNumber: '',
         bookingUrl: 'https://www.livingdesert.org/events/wildlights-2026/2026-11-28/',
-        notes: 'Last entry 8:30 PM. Check date-specific Day + Night tickets before buying.'
-      },
-      {
+        bookingLinkLabel: 'WildLights',
+        notes: 'Zoo until 5 PM · WildLights 6–9 PM (last entry 8:30 PM). Check date-specific tickets.'
+      }),
+      normalizeReservationItem({
         id: 'res-tramway',
         type: 'ticket',
         status: 'pending',
         title: 'Palm Springs Aerial Tramway',
         provider: 'Mountain Station (8,516 ft)',
         location: 'Palm Springs, CA (8,516 ft)',
-        checkIn: 'Sun, Nov 29 · 3:45 PM',
-        checkOut: 'Last tram down 9:30 PM',
+        startDate: '2026-11-29',
+        startTime: '15:45',
+        endDate: '2026-11-29',
+        endTime: '21:30',
         confirmationNumber: '',
         bookingUrl: 'https://pstramway.com/tickets/',
-        notes: 'Mountain Station is 30–40°F colder; pack warm layers for everyone.'
-      },
-      {
+        bookingLinkLabel: 'Tram',
+        notes: 'Mountain Station is 30–40°F colder; pack warm layers. Last tram down 9:30 PM.'
+      }),
+      normalizeReservationItem({
         id: 'res-4',
         type: 'restaurant',
         status: 'pending',
         title: 'Peaks Restaurant · Sunset Dinner',
         provider: 'Mountain Station · Party of 3',
         location: 'Mountain Station, Palm Springs',
-        checkIn: 'Sun, Nov 29 · 5:00 PM',
-        checkOut: 'Dinner until 7:45 PM',
+        startDate: '2026-11-29',
+        startTime: '17:15',
+        endDate: '2026-11-29',
+        endTime: '18:45',
         confirmationNumber: '',
         bookingUrl: 'https://pstramway.com/dining/',
-        notes: 'Advance table reservations strongly recommended for sunset seating.'
-      },
-      {
+        bookingLinkLabel: 'Peaks Dining',
+        notes: 'Advance table reservations strongly recommended for sunset seating (5:00–7:45 PM).'
+      }),
+      normalizeReservationItem({
         id: 'res-air-museum',
         type: 'ticket',
         status: 'pending',
         title: 'Palm Springs Air Museum',
         provider: 'General Admission',
         location: 'Palm Springs, CA',
-        checkIn: 'Daily · 10:00 AM',
-        checkOut: '5:00 PM',
+        startDate: '2026-11-29',
+        startTime: '10:00',
+        endDate: '2026-11-29',
+        endTime: '17:00',
         confirmationNumber: '',
         bookingUrl: 'https://palmspringsairmuseum.org/visit/',
-        notes: 'Admission applies; great morning family stop.'
-      },
-      {
+        bookingLinkLabel: 'Air Museum',
+        notes: 'Open daily 10 AM – 5 PM; admission applies; great morning family stop.'
+      }),
+      normalizeReservationItem({
         id: 'res-moorten',
         type: 'ticket',
         status: 'pending',
         title: 'Moorten Botanical Garden',
         provider: 'Historic Desert Garden & Cactarium',
         location: 'Palm Springs, CA',
-        checkIn: '10:00 AM',
-        checkOut: '4:00 PM (Closed Wed)',
+        startDate: '2026-11-29',
+        startTime: '13:30',
+        endDate: '2026-11-29',
+        endTime: '16:00',
         confirmationNumber: '',
         bookingUrl: 'https://www.moortenbotanicalgarden.com/',
-        notes: 'Historic desert botanical garden & Cactarium.'
-      },
-      {
+        bookingLinkLabel: 'Moorten Garden',
+        notes: 'Season hours 10 AM – 4 PM (Closed Wed). Historic desert botanical garden & Cactarium.'
+      }),
+      normalizeReservationItem({
         id: 'res-5',
         type: 'ticket',
         status: 'pending',
         title: '123 Farm Christmas Nights',
         provider: 'Weekday Admission',
         location: 'Cherry Valley, CA',
-        checkIn: 'Mon, Nov 30 · 5:00 PM',
-        checkOut: '10:00 PM',
+        startDate: '2026-11-30',
+        startTime: '17:00',
+        endDate: '2026-11-30',
+        endTime: '22:00',
         confirmationNumber: '',
         bookingUrl: 'https://ticket.123farm.com/xmas',
+        bookingLinkLabel: '123 Farm',
         notes: 'Buy date-specific tickets online; gate tickets may not be available.'
-      }
+      })
     ],
-    notes: ''
+    notes: '',
+    notesHtml: ''
   };
   normalizeTripSchedules(trip);
   return trip;
@@ -1060,7 +1456,8 @@ export function createNewDefaultTrip({
       ]
     },
     reservations: [],
-    notes: ''
+    notes: '',
+    notesHtml: ''
   };
   normalizeTripSchedules(trip);
   return trip;
@@ -1117,7 +1514,7 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     ? rawTrip.reservations.map((r) => normalizeReservationItem(r)).filter((r) => r.title)
     : (isDefaultThanksgiving ? base.reservations.map((r) => normalizeReservationItem(r)) : []);
 
-  // Automatically merge any legacy saved Official Links into Reservations & Trip Vault (zero duplicates)
+  // Automatically merge any legacy saved Official Links into Booki (zero duplicates)
   if (Array.isArray(rawTrip?.links) && rawTrip.links.length > 0) {
     const existingUrls = new Set(
       normalizedReservations.map((r) => normalizeUrlForCompare(r.bookingUrl)).filter(Boolean)
@@ -1138,6 +1535,11 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     });
   }
 
+  const rawNotesPlain = typeof rawTrip?.notes === 'string' ? rawTrip.notes : '';
+  const rawNotesHtml = typeof rawTrip?.notesHtml === 'string' ? sanitizeRichNotesHtml(rawTrip.notesHtml) : '';
+  const finalNotesHtml = rawNotesHtml || (rawNotesPlain ? plainTextToRichHtml(rawNotesPlain) : '');
+  const finalNotesPlain = finalNotesHtml ? extractPlainTextFromRichHtml(finalNotesHtml) : rawNotesPlain;
+
   const merged = {
     ...base,
     ...rawTrip,
@@ -1149,7 +1551,8 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
     budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
     reservations: normalizedReservations,
-    notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : ''
+    notes: finalNotesPlain,
+    notesHtml: finalNotesHtml
   };
   delete merged.links;
   normalizeTripSchedules(merged);
@@ -1461,10 +1864,11 @@ export function serializeStateForCloud() {
     reservations: Array.isArray(trip.reservations)
       ? trip.reservations.map((r) => normalizeReservationItem(r))
       : [],
-    notes: trip.notes
+    notes: typeof trip.notes === 'string' ? trip.notes : '',
+    notesHtml: typeof trip.notesHtml === 'string' ? trip.notesHtml : ''
   }));
   return JSON.stringify({
-    version: 5,
+    version: 6,
     activeTripId: appStore.activeTripId,
     trips: cleanTrips
   });
@@ -1556,7 +1960,13 @@ export function renderStaticIcons() {
   setHtml('prevIcon', ICONS.chevronLeft);
   setHtml('nextIcon', ICONS.chevronRight);
   setHtml('copyNotesIcon', ICONS.copy);
+  setHtml('bookiHeaderIcon', ICONS.booki);
   setHtml('addReservationIcon', ICONS.plus);
+  setHtml('rteHighlightIcon', ICONS.highlighter);
+  setHtml('rteBulletIcon', ICONS.listBullet);
+  setHtml('rteNumberIcon', ICONS.listNumber);
+  setHtml('rteChecklistIcon', ICONS.checklist);
+  setHtml('rteClearIcon', ICONS.clearFormat);
   setHtml('modalCloseBtn', ICONS.close);
   setHtml('toggleWeatherChevron', ICONS.chevronDown);
   setHtml('manageCategoriesIcon', ICONS.palette);

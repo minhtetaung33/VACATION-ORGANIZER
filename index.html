@@ -370,21 +370,24 @@
       <div id="itineraryContainer" class="space-y-5"></div>
     </section>
 
-    <!-- 6. SPATIAL "OTHER CONTROLS" GLASS DASHBOARD (Unified Reservations Vault, Readiness, Budget) -->
+    <!-- 6. SPATIAL "OTHER CONTROLS" GLASS DASHBOARD (Booki, Readiness, Budget) -->
     <section class="space-y-5 animate-fadeUp" style="animation-delay: 260ms;">
       <div class="flex items-center justify-between">
         <h2 class="text-sm sm:text-base font-medium text-white/95 tracking-tight">Trip Controls &amp; Modules</h2>
       </div>
 
-      <!-- UNIFIED MODULE: Reservations, Bookings & Personal Notes Vault (Full Width) -->
-      <div id="reservationsVaultCard" class="relative overflow-hidden rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/45 hover:border-white/20 transition-all duration-300 space-y-5">
+      <!-- UNIFIED MODULE: Booki (Bookings, Reservations & Rich-Text Personal Notes) -->
+      <div id="reservationsVaultCard" class="relative rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/45 hover:border-white/20 transition-all duration-300 space-y-5">
         <!-- Subtle Top Gradient Accent Glow -->
         <div class="pointer-events-none absolute top-0 left-8 right-8 h-[2px] rounded-full bg-gradient-to-r from-orange-400/70 via-sky-400/80 to-emerald-400/70 opacity-75"></div>
 
-        <!-- Vault Header + Live Status Counters + Add Booking -->
+        <!-- Booki Header + Cute Icon + Live Status Counters + Add Booking -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div class="flex flex-wrap items-center gap-2.5 min-w-0">
-            <h3 class="text-lg sm:text-xl font-bold text-white tracking-tight">Reservations &amp; Trip Vault</h3>
+          <div class="flex flex-wrap items-center gap-3 min-w-0">
+            <div class="inline-flex items-center gap-2.5">
+              <span id="bookiHeaderIcon" class="booki-badge-icon w-10 h-10 rounded-2xl bg-gradient-to-br from-orange-400/25 via-rose-400/20 to-sky-400/25 border border-white/20 flex items-center justify-center shrink-0"></span>
+              <h3 class="text-xl sm:text-2xl font-bold tracking-tight bg-gradient-to-r from-white via-orange-100 to-sky-200 bg-clip-text text-transparent">Booki</h3>
+            </div>
             <div id="vaultStatusSummary" class="flex flex-wrap items-center gap-1.5"></div>
           </div>
 
@@ -405,8 +408,8 @@
         <!-- Reservations & Bookings Cards Grid -->
         <div id="reservationsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5"></div>
 
-        <!-- Integrated Personal Trip Notes Sub-Panel -->
-        <div class="rounded-2xl bg-black/30 border border-white/10 p-3.5 sm:p-4 space-y-2.5">
+        <!-- Integrated Rich-Text Personal Trip Notes & Quick Reminders -->
+        <div class="rounded-2xl bg-black/30 border border-white/10 p-3.5 sm:p-4 space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <span class="w-2 h-2 rounded-full bg-gradient-to-r from-orange-400 to-sky-400"></span>
@@ -417,7 +420,111 @@
               <span>Copy Notes</span>
             </button>
           </div>
-          <textarea id="notesInput" rows="3" placeholder="Gate codes, Wi-Fi passwords, emergency contacts, special dietary requests, packing reminders..." class="w-full rounded-xl border border-white/10 bg-black/40 px-3.5 py-2.5 text-xs sm:text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/50 transition-all resize-y"></textarea>
+
+          <!-- Notion / Word-Style Rich-Text Editor Shell -->
+          <div class="rte-shell">
+            <div id="notesToolbar" class="rte-toolbar" role="toolbar" aria-label="Text formatting toolbar">
+              <!-- Font Family -->
+              <select id="rteFontFamily" title="Font Family" aria-label="Font Family" class="rte-select">
+                <option value="Inter, ui-sans-serif, system-ui, sans-serif" class="bg-slate-900">Sans (Inter)</option>
+                <option value="Georgia, 'Times New Roman', serif" class="bg-slate-900">Serif (Georgia)</option>
+                <option value="'Trebuchet MS', 'Segoe UI', sans-serif" class="bg-slate-900">Rounded</option>
+                <option value="ui-monospace, SFMono-Regular, Menlo, monospace" class="bg-slate-900">Monospace</option>
+              </select>
+
+              <!-- Font Size -->
+              <select id="rteFontSize" title="Font Size" aria-label="Font Size" class="rte-select">
+                <option value="12px" class="bg-slate-900">12 px</option>
+                <option value="14px" class="bg-slate-900" selected>14 px</option>
+                <option value="16px" class="bg-slate-900">16 px</option>
+                <option value="18px" class="bg-slate-900">18 px</option>
+                <option value="20px" class="bg-slate-900">20 px</option>
+                <option value="24px" class="bg-slate-900">24 px</option>
+              </select>
+
+              <span class="rte-divider" aria-hidden="true"></span>
+
+              <!-- Text Emphasis -->
+              <button type="button" data-rte-cmd="bold" title="Bold (Ctrl+B)" class="rte-btn font-extrabold">B</button>
+              <button type="button" data-rte-cmd="italic" title="Italic (Ctrl+I)" class="rte-btn italic font-serif">I</button>
+              <button type="button" data-rte-cmd="underline" title="Underline (Ctrl+U)" class="rte-btn underline">U</button>
+              <button type="button" data-rte-cmd="strikeThrough" title="Strikethrough" class="rte-btn line-through">S</button>
+
+              <span class="rte-divider" aria-hidden="true"></span>
+
+              <!-- Text Color Picker Popover -->
+              <div class="relative">
+                <button id="rteTextColorBtn" type="button" title="Text Color" class="rte-btn flex-col leading-none py-0.5">
+                  <span class="text-[11px] font-bold">A</span>
+                  <span id="rteTextColorBar" class="rte-color-indicator bg-sky-300"></span>
+                </button>
+                <div id="rteTextColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
+                  <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Text Color</div>
+                  <div id="rteTextColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
+                  <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                    <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
+                      <span>Custom</span>
+                      <input id="rteTextColorCustom" type="color" value="#7dd3fc" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
+                    </label>
+                    <button type="button" data-rte-reset-text-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">Reset</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Background Highlight Color Picker Popover -->
+              <div class="relative">
+                <button id="rteBgColorBtn" type="button" title="Highlight Color" class="rte-btn flex-col leading-none py-0.5">
+                  <span id="rteHighlightIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+                  <span id="rteBgColorBar" class="rte-color-indicator bg-amber-400"></span>
+                </button>
+                <div id="rteBgColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
+                  <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Highlight Color</div>
+                  <div id="rteBgColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
+                  <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                    <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
+                      <span>Custom</span>
+                      <input id="rteBgColorCustom" type="color" value="#f59e0b" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
+                    </label>
+                    <button type="button" data-rte-reset-bg-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">None</button>
+                  </div>
+                </div>
+              </div>
+
+              <span class="rte-divider" aria-hidden="true"></span>
+
+              <!-- Lists & Interactive Checklist -->
+              <button type="button" data-rte-cmd="insertUnorderedList" title="Bulleted List" class="rte-btn">
+                <span id="rteBulletIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+              </button>
+              <button type="button" data-rte-cmd="insertOrderedList" title="Numbered List" class="rte-btn">
+                <span id="rteNumberIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+              </button>
+              <button id="rteChecklistBtn" type="button" title="Insert Interactive Checklist" class="rte-btn">
+                <span id="rteChecklistIcon" class="w-3.5 h-3.5 flex items-center justify-center text-sky-300"></span>
+                <span class="hidden sm:inline text-[11px] font-medium">Checklist</span>
+              </button>
+
+              <span class="rte-divider" aria-hidden="true"></span>
+
+              <!-- Clear Formatting -->
+              <button id="rteClearFormatBtn" type="button" title="Clear Formatting" class="rte-btn text-white/55 hover:text-rose-300">
+                <span id="rteClearIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+              </button>
+            </div>
+
+            <!-- Rich-Text Editable Canvas -->
+            <div
+              id="notesEditor"
+              contenteditable="true"
+              spellcheck="true"
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Personal Trip Notes and Quick Reminders"
+              data-placeholder="Gate codes, Wi-Fi passwords, emergency contacts, special dietary requests, packing checklists..."
+              class="rte-editor"
+            ></div>
+          </div>
+
           <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
             <span id="notesMeta">0 characters</span>
             <span id="syncStatusText" class="inline-flex items-center gap-1.5 text-sky-300/80">

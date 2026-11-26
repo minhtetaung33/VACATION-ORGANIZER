@@ -13,7 +13,7 @@ import {
   prefetchAllCardPhotos,
   refreshTripTravelRoutes,
   initCloudSync,
-  scheduleCloudSave,
+  extractPlainTextFromRichHtml,
   showToast,
   copyTextToClipboard,
   closeModal
@@ -24,6 +24,7 @@ import {
   scrollToTimelineEvent,
   renderItinerary,
   renderAll,
+  initRichNotesEditor,
   openSavePdfFlow
 } from './trip-planner-detail.js';
 
@@ -147,7 +148,7 @@ function bindGlobalEvents() {
     renderItinerary();
   });
 
-  // Unified Reservations & Trip Vault Controls
+  // Booki Controls
   document.getElementById('addReservationBtn')?.addEventListener('click', () => {
     const preselectedType = appStore.vaultTypeFilter && appStore.vaultTypeFilter !== 'all'
       ? appStore.vaultTypeFilter
@@ -162,16 +163,13 @@ function bindGlobalEvents() {
     setWeatherPanelExpanded(!appStore.weatherPanelExpanded);
   });
 
-  document.getElementById('notesInput')?.addEventListener('input', (e) => {
-    appStore.state.notes = e.target.value;
-    const notesMetaEl = document.getElementById('notesMeta');
-    if (notesMetaEl) notesMetaEl.textContent = `${appStore.state.notes.length} characters`;
-    scheduleCloudSave();
-  });
-
+  // Copy Formatted Rich-Text Personal Notes as Clean Text
   document.getElementById('copyNotesBtn')?.addEventListener('click', () => {
-    if (!appStore.state.notes.trim()) return showToast('Notes are currently empty', 'error');
-    copyTextToClipboard(appStore.state.notes, 'Trip notes copied!');
+    const plain = appStore.state.notesHtml
+      ? extractPlainTextFromRichHtml(appStore.state.notesHtml)
+      : String(appStore.state.notes || '').trim();
+    if (!plain) return showToast('Notes are currently empty', 'error');
+    copyTextToClipboard(plain, 'Trip notes copied!');
   });
 
   document.getElementById('modalCloseBtn')?.addEventListener('click', closeModal);
@@ -183,7 +181,14 @@ function bindGlobalEvents() {
   window.addEventListener('keydown', (e) => {
     const modalOpen = !document.getElementById('modalOverlay').classList.contains('hidden');
     if (e.key === 'Escape' && modalOpen) return closeModal();
-    if (modalOpen || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
+    const activeEl = document.activeElement;
+    if (
+      modalOpen ||
+      activeEl?.isContentEditable ||
+      ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl?.tagName)
+    ) {
+      return;
+    }
     if (e.key === 'ArrowLeft') setActiveCarouselIndex(appStore.activeCarouselIndex - 1);
     if (e.key === 'ArrowRight') setActiveCarouselIndex(appStore.activeCarouselIndex + 1);
   });
@@ -260,6 +265,7 @@ renderStaticIcons();
 updateClock();
 setInterval(updateClock, 1000);
 bindGlobalEvents();
+initRichNotesEditor();
 updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0]);
 renderAll();
 prefetchAllDaysWeather();

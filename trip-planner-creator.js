@@ -12,6 +12,8 @@ import {
   esc,
   normalizeLocationCoords,
   normalizeReservationItem,
+  formatBookingDateTime,
+  parseLegacyBookingDateTime,
   getAllCategories,
   getCategoryMeta,
   inferBudgetCategory,
@@ -532,7 +534,7 @@ export function openTripsModal() {
     title: `My Trips (${appStore.trips.length})`,
     bodyHtml: `
       <div class="space-y-3">
-        <p class="text-xs text-white/60">Select any previous or active trip to open its itinerary, reservations, checklist, budget, and backdrop.</p>
+        <p class="text-xs text-white/60">Select any previous or active trip to open its itinerary, Booki reservations, checklist, budget, and backdrop.</p>
         <div class="space-y-2.5">${tripCardsHtml}</div>
       </div>
     `,
@@ -569,7 +571,7 @@ export function openTripsModal() {
       openConfirmDeleteModal({
         title: 'Delete Saved Trip',
         itemName: targetTrip.meta?.title || 'Trip',
-        detail: 'This will permanently remove this trip and all of its days, reservations, budget, and notes.',
+        detail: 'This will permanently remove this trip and all of its days, Booki bookings, budget, and notes.',
         confirmLabel: 'Yes, Delete Trip',
         onConfirm: () => {
           appStore.trips = appStore.trips.filter((t) => t.id !== targetId);
@@ -589,7 +591,7 @@ export function openTripsModal() {
 
 /**
  * ============================================================================
- * UNIFIED RESERVATIONS & BOOKINGS MODAL (Dynamic Category Labels + Status)
+ * BOOKI ADD / EDIT RESERVATION MODAL (Calendar + Time Pickers & Link Title)
  * ============================================================================
  */
 export function openReservationModal(reservationId = null, preselectedType = null) {
@@ -604,9 +606,26 @@ export function openReservationModal(reservationId = null, preselectedType = nul
     ? existing.status
     : 'confirmed';
 
+  // Resolve initial structured Date & Time values (with automatic fallback for legacy entries)
+  const parsedStart = (!existing?.startDate && !existing?.startTime && existing?.checkIn)
+    ? parseLegacyBookingDateTime(existing.checkIn, 2026)
+    : { date: existing?.startDate || '', time: existing?.startTime || '' };
+  const parsedEnd = (!existing?.endDate && !existing?.endTime && existing?.checkOut)
+    ? parseLegacyBookingDateTime(existing.checkOut, 2026)
+    : { date: existing?.endDate || '', time: existing?.endTime || '' };
+
+  const initStartDate = parsedStart.date;
+  const initStartTime = parsedStart.time;
+  const initEndDate = parsedEnd.date;
+  const initEndTime = parsedEnd.time;
+
+  const initStartFormatted = formatBookingDateTime(initStartDate, initStartTime, existing?.checkIn || '');
+  const initEndFormatted = formatBookingDateTime(initEndDate, initEndTime, existing?.checkOut || '');
+
   const typeMeta = RESERVATION_TYPE_META[selectedType];
   const statusMeta = RESERVATION_STATUS_META[selectedStatus];
   const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
+  const pickerInp = 'booki-picker-input w-full rounded-xl border border-white/15 bg-black/50 px-2.5 py-2 text-xs sm:text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all tabular-nums';
 
   const typeButtonsHtml = Object.entries(RESERVATION_TYPE_META).map(([key, meta]) => `
     <button
@@ -689,26 +708,65 @@ export function openReservationModal(reservationId = null, preselectedType = nul
             </div>
           </div>
 
-          <!-- Dynamic Check-In / Check-Out Times -->
+          <!-- Interactive Calendar Date & Time Pickers for Start & End -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label id="rCheckInLabel" class="block text-xs font-semibold text-sky-300/90 mb-1">${esc(typeMeta.startLabel)}</label>
-              <input id="rCheckIn" placeholder="${esc(typeMeta.startPlaceholder)}" class="${inp} border-sky-400/25" value="${esc(existing?.checkIn || '')}" />
+            <!-- Start Date & Time Box -->
+            <div class="rounded-2xl border border-sky-400/25 bg-sky-500/[0.06] p-3 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span id="rStartLabel" class="text-[11px] font-bold uppercase tracking-wider text-sky-300">${esc(typeMeta.startLabel)}</span>
+                <button id="rClearStartBtn" type="button" class="text-[10px] font-medium text-white/45 hover:text-white cursor-pointer">Clear</button>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label for="rStartDate" class="block text-[10px] text-white/50 mb-0.5">Date</label>
+                  <input id="rStartDate" type="date" class="${pickerInp} border-sky-400/25" value="${esc(initStartDate)}" />
+                </div>
+                <div>
+                  <label for="rStartTime" class="block text-[10px] text-white/50 mb-0.5">Time</label>
+                  <input id="rStartTime" type="time" class="${pickerInp} border-sky-400/25" value="${esc(initStartTime)}" />
+                </div>
+              </div>
+              <div id="rStartPreview" class="text-[11px] font-semibold tabular-nums truncate ${initStartFormatted ? 'text-sky-100' : 'text-white/40'}">
+                ${esc(initStartFormatted || 'Select calendar date & time')}
+              </div>
             </div>
-            <div>
-              <label id="rCheckOutLabel" class="block text-xs font-semibold text-orange-300/90 mb-1">${esc(typeMeta.endLabel)}</label>
-              <input id="rCheckOut" placeholder="${esc(typeMeta.endPlaceholder)}" class="${inp} border-orange-400/25" value="${esc(existing?.checkOut || '')}" />
+
+            <!-- End Date & Time Box -->
+            <div class="rounded-2xl border border-orange-400/25 bg-orange-500/[0.06] p-3 space-y-2">
+              <div class="flex items-center justify-between gap-2">
+                <span id="rEndLabel" class="text-[11px] font-bold uppercase tracking-wider text-orange-300">${esc(typeMeta.endLabel)}</span>
+                <button id="rClearEndBtn" type="button" class="text-[10px] font-medium text-white/45 hover:text-white cursor-pointer">Clear</button>
+              </div>
+              <div class="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label for="rEndDate" class="block text-[10px] text-white/50 mb-0.5">Date</label>
+                  <input id="rEndDate" type="date" class="${pickerInp} border-orange-400/25" value="${esc(initEndDate)}" />
+                </div>
+                <div>
+                  <label for="rEndTime" class="block text-[10px] text-white/50 mb-0.5">Time</label>
+                  <input id="rEndTime" type="time" class="${pickerInp} border-orange-400/25" value="${esc(initEndTime)}" />
+                </div>
+              </div>
+              <div id="rEndPreview" class="text-[11px] font-semibold tabular-nums truncate ${initEndFormatted ? 'text-orange-100' : 'text-white/40'}">
+                ${esc(initEndFormatted || 'Optional end date & time')}
+              </div>
             </div>
           </div>
 
-          <!-- Confirmation # & Booking Link -->
+          <!-- Confirmation Number -->
+          <div>
+            <label class="block text-xs font-semibold text-white/65 mb-1">Confirmation Number</label>
+            <input id="rCode" placeholder="${esc(typeMeta.codePlaceholder)}" class="${inp} font-mono tracking-wider uppercase" value="${esc(existing?.confirmationNumber || '')}" />
+          </div>
+
+          <!-- Link Title + Booking / Official Link -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
-              <label class="block text-xs font-semibold text-white/65 mb-1">Confirmation Number</label>
-              <input id="rCode" placeholder="${esc(typeMeta.codePlaceholder)}" class="${inp} font-mono tracking-wider uppercase" value="${esc(existing?.confirmationNumber || '')}" />
+              <label class="block text-xs font-semibold text-white/65 mb-1">Link Title <span class="text-white/40 font-normal">(Shown on card)</span></label>
+              <input id="rLinkLabel" placeholder="${esc(typeMeta.linkLabelPlaceholder)}" class="${inp}" value="${esc(existing?.bookingLinkLabel || '')}" />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-white/65 mb-1">Booking / Official Link</label>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Booking / Official URL</label>
               <input id="rUrl" type="url" placeholder="https://..." class="${inp}" value="${esc(existing?.bookingUrl || '')}" />
             </div>
           </div>
@@ -734,6 +792,11 @@ export function openReservationModal(reservationId = null, preselectedType = nul
             bookingUrl = 'https://' + bookingUrl;
           }
 
+          const startDate = document.getElementById('rStartDate').value.trim();
+          const startTime = document.getElementById('rStartTime').value.trim();
+          const endDate = document.getElementById('rEndDate').value.trim();
+          const endTime = document.getElementById('rEndTime').value.trim();
+
           const payload = normalizeReservationItem({
             id: existing ? existing.id : uid('res'),
             type: selectedType,
@@ -741,10 +804,15 @@ export function openReservationModal(reservationId = null, preselectedType = nul
             title,
             provider: document.getElementById('rProvider').value.trim(),
             location: document.getElementById('rLocation').value.trim(),
-            checkIn: document.getElementById('rCheckIn').value.trim(),
-            checkOut: document.getElementById('rCheckOut').value.trim(),
+            startDate,
+            startTime,
+            endDate,
+            endTime,
+            checkIn: formatBookingDateTime(startDate, startTime, ''),
+            checkOut: formatBookingDateTime(endDate, endTime, ''),
             confirmationNumber: document.getElementById('rCode').value.trim(),
             bookingUrl,
+            bookingLinkLabel: document.getElementById('rLinkLabel').value.trim(),
             notes: document.getElementById('rNotes').value.trim()
           });
 
@@ -760,7 +828,7 @@ export function openReservationModal(reservationId = null, preselectedType = nul
             if (appStore.vaultStatusFilter !== 'all' && appStore.vaultStatusFilter !== payload.status) {
               appStore.vaultStatusFilter = 'all';
             }
-            showToast(`Added "${payload.title}" to Trip Vault`);
+            showToast(`Added "${payload.title}" to Booki`);
           }
 
           closeModal();
@@ -774,16 +842,35 @@ export function openReservationModal(reservationId = null, preselectedType = nul
   const titleEl = document.getElementById('rTitle');
   const providerEl = document.getElementById('rProvider');
   const locationEl = document.getElementById('rLocation');
-  const checkInEl = document.getElementById('rCheckIn');
-  const checkOutEl = document.getElementById('rCheckOut');
-  const checkInLbl = document.getElementById('rCheckInLabel');
-  const checkOutLbl = document.getElementById('rCheckOutLabel');
+  const startLabelEl = document.getElementById('rStartLabel');
+  const endLabelEl = document.getElementById('rEndLabel');
+  const startDateEl = document.getElementById('rStartDate');
+  const startTimeEl = document.getElementById('rStartTime');
+  const endDateEl = document.getElementById('rEndDate');
+  const endTimeEl = document.getElementById('rEndTime');
+  const startPreviewEl = document.getElementById('rStartPreview');
+  const endPreviewEl = document.getElementById('rEndPreview');
   const codeEl = document.getElementById('rCode');
+  const linkLabelEl = document.getElementById('rLinkLabel');
   const notesEl = document.getElementById('rNotes');
   const previewIconEl = document.getElementById('rPreviewIcon');
   const previewTypeEl = document.getElementById('rPreviewType');
   const previewTitleEl = document.getElementById('rPreviewTitle');
   const previewStatusEl = document.getElementById('rPreviewStatus');
+
+  function syncDateTimePreviews() {
+    const startStr = formatBookingDateTime(startDateEl?.value, startTimeEl?.value, '');
+    const endStr = formatBookingDateTime(endDateEl?.value, endTimeEl?.value, '');
+
+    if (startPreviewEl) {
+      startPreviewEl.textContent = startStr || 'Select calendar date & time';
+      startPreviewEl.className = `text-[11px] font-semibold tabular-nums truncate ${startStr ? 'text-sky-100' : 'text-white/40'}`;
+    }
+    if (endPreviewEl) {
+      endPreviewEl.textContent = endStr || 'Optional end date & time';
+      endPreviewEl.className = `text-[11px] font-semibold tabular-nums truncate ${endStr ? 'text-orange-100' : 'text-white/40'}`;
+    }
+  }
 
   function syncReservationModalUI() {
     const tMeta = RESERVATION_TYPE_META[selectedType] || RESERVATION_TYPE_META.hotel;
@@ -803,11 +890,10 @@ export function openReservationModal(reservationId = null, preselectedType = nul
     if (titleEl) titleEl.placeholder = tMeta.titlePlaceholder;
     if (providerEl) providerEl.placeholder = tMeta.providerPlaceholder;
     if (locationEl) locationEl.placeholder = tMeta.locationPlaceholder;
-    if (checkInLbl) checkInLbl.textContent = tMeta.startLabel;
-    if (checkOutLbl) checkOutLbl.textContent = tMeta.endLabel;
-    if (checkInEl) checkInEl.placeholder = tMeta.startPlaceholder;
-    if (checkOutEl) checkOutEl.placeholder = tMeta.endPlaceholder;
+    if (startLabelEl) startLabelEl.textContent = tMeta.startLabel;
+    if (endLabelEl) endLabelEl.textContent = tMeta.endLabel;
     if (codeEl) codeEl.placeholder = tMeta.codePlaceholder;
+    if (linkLabelEl) linkLabelEl.placeholder = tMeta.linkLabelPlaceholder;
     if (notesEl) notesEl.placeholder = tMeta.notePlaceholder;
 
     document.querySelectorAll('[data-res-type]').forEach((btn) => {
@@ -847,6 +933,29 @@ export function openReservationModal(reservationId = null, preselectedType = nul
     });
   });
 
+  startDateEl?.addEventListener('change', () => {
+    // Helpful default: set End Date min to Start Date so calendar opens on the right week
+    if (endDateEl && startDateEl.value && !endDateEl.value && ['restaurant', 'ticket', 'flight'].includes(selectedType)) {
+      endDateEl.value = startDateEl.value;
+    }
+    syncDateTimePreviews();
+  });
+  startTimeEl?.addEventListener('change', syncDateTimePreviews);
+  endDateEl?.addEventListener('change', syncDateTimePreviews);
+  endTimeEl?.addEventListener('change', syncDateTimePreviews);
+
+  document.getElementById('rClearStartBtn')?.addEventListener('click', () => {
+    if (startDateEl) startDateEl.value = '';
+    if (startTimeEl) startTimeEl.value = '';
+    syncDateTimePreviews();
+  });
+
+  document.getElementById('rClearEndBtn')?.addEventListener('click', () => {
+    if (endDateEl) endDateEl.value = '';
+    if (endTimeEl) endTimeEl.value = '';
+    syncDateTimePreviews();
+  });
+
   titleEl?.addEventListener('input', () => {
     if (previewTitleEl) {
       const tMeta = RESERVATION_TYPE_META[selectedType] || RESERVATION_TYPE_META.hotel;
@@ -860,7 +969,7 @@ export function openReservationModal(reservationId = null, preselectedType = nul
 }
 
 /**
- * One-Click Status Cycle on Any Booking Card (Confirmed → Pending → Cancelled)
+ * One-Click Status Cycle on Any Booki Card (Confirmed → Pending → Cancelled)
  */
 export function cycleReservationStatus(reservationId) {
   const list = appStore.state.reservations || [];
@@ -888,7 +997,7 @@ export function deleteReservation(reservationId) {
   openConfirmDeleteModal({
     title: 'Delete Reservation',
     itemName: target.title,
-    detail: 'Do you want to remove this booking and its confirmation details from your Trip Vault?',
+    detail: 'Do you want to remove this booking and its confirmation details from Booki?',
     confirmLabel: 'Yes, Remove Booking',
     onConfirm: () => {
       state.reservations = (state.reservations || []).filter((r) => r.id !== target.id);
@@ -2411,7 +2520,7 @@ export function confirmResetPlanner() {
   openConfirmDeleteModal({
     title: 'Reset Current Trip',
     itemName: isOriginal ? 'Restore Default Thanksgiving Trip' : `Reset "${state.meta.title}"`,
-    detail: 'This will restore the default itinerary, reservations, checklist, budget, and clear notes for the active trip (your other saved trips remain safe).',
+    detail: 'This will restore the default itinerary, Booki reservations, checklist, budget, and clear notes for the active trip (your other saved trips remain safe).',
     confirmLabel: 'Yes, Reset Trip',
     onConfirm: () => {
       const firstDay = state.days[0];

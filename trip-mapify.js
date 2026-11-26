@@ -11,7 +11,8 @@ import {
 import {
   formatDuration,
   formatDistance,
-  getTripMapData
+  getTripMapData,
+  haversineMiles
 } from './trip-timeline-engine.js';
 
 /**
@@ -26,7 +27,10 @@ export function registerMapifyHooks(overrides = {}) {
 }
 
 /**
- * Map Tile Themes (100% Free, Zero-API-Key Esri Basemaps + Layered Street & City Labels)
+ * Map Tile Themes (100% Free, Zero-API-Key Basemaps)
+ * - Dark: Dark canvas + cute animated nearby places (restaurants, attractions, restrooms, gas, parking)
+ * - Street: Unchanged Esri World Street Map
+ * - Basemap: Clean, crisp, pastel CARTO Voyager + floating route pills & soft destination halos
  */
 const MAP_TILE_THEMES = {
   dark: {
@@ -43,7 +47,7 @@ const MAP_TILE_THEMES = {
         zIndex: 2
       }
     ],
-    attribution: 'Tiles &copy; Esri',
+    attribution: 'Tiles &copy; Esri &middot; Places &copy; OpenStreetMap',
     maxZoom: 19
   },
   street: {
@@ -58,38 +62,92 @@ const MAP_TILE_THEMES = {
     attribution: 'Tiles &copy; Esri',
     maxZoom: 19
   },
-  satellite: {
-    label: 'Satellite',
+  basemap: {
+    label: 'Basemap',
     layers: [
       {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        maxNativeZoom: 18,
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        subdomains: 'abcd',
+        className: 'mapify-basemap-tiles',
+        maxNativeZoom: 19,
         zIndex: 1
-      },
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}',
-        maxNativeZoom: 18,
-        zIndex: 2
-      },
-      {
-        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-        maxNativeZoom: 18,
-        zIndex: 3
       }
     ],
-    attribution: 'Tiles &copy; Esri',
-    maxZoom: 19
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    maxZoom: 20
   }
 };
 
 const DAY_ROUTE_PALETTE = [
-  { hex: '#fb923c', name: 'Sunset Orange' },
-  { hex: '#38bdf8', name: 'Electric Sky' },
-  { hex: '#34d399', name: 'Emerald Mint' },
-  { hex: '#a78bfa', name: 'Cosmic Violet' },
-  { hex: '#f472b6', name: 'Rose Quartz' },
-  { hex: '#fbbf24', name: 'Golden Amber' }
+  { hex: '#fb923c', basemapHex: '#ea580c', rgb: '251, 146, 60', name: 'Sunset Orange' },
+  { hex: '#38bdf8', basemapHex: '#0284c7', rgb: '56, 189, 248', name: 'Electric Sky' },
+  { hex: '#34d399', basemapHex: '#059669', rgb: '52, 211, 153', name: 'Emerald Mint' },
+  { hex: '#a78bfa', basemapHex: '#7c3aed', rgb: '167, 139, 250', name: 'Cosmic Violet' },
+  { hex: '#f472b6', basemapHex: '#db2777', rgb: '244, 114, 182', name: 'Rose Quartz' },
+  { hex: '#fbbf24', basemapHex: '#d97706', rgb: '251, 191, 36', name: 'Golden Amber' }
 ];
+
+/**
+ * Dark Mode Nearby Place Categories (Cute Custom SVGs, Colors & Animations)
+ */
+const DARK_POI_CATEGORIES = {
+  restaurant: {
+    key: 'restaurant',
+    label: 'Food',
+    fullLabel: 'Restaurant & Cafe',
+    accent: '#fb923c',
+    pillActive: 'bg-orange-500/25 border-orange-400/60 text-orange-100',
+    pinClass: 'mapify-poi-pin--restaurant',
+    maxItems: 10,
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>`
+  },
+  attraction: {
+    key: 'attraction',
+    label: 'Sights',
+    fullLabel: 'Attraction & Landmark',
+    accent: '#e879f9',
+    pillActive: 'bg-fuchsia-500/25 border-fuchsia-400/60 text-fuchsia-100',
+    pinClass: 'mapify-poi-pin--attraction',
+    maxItems: 10,
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3Z"/></svg>`
+  },
+  restroom: {
+    key: 'restroom',
+    label: 'Restroom',
+    fullLabel: 'Public Restroom',
+    accent: '#38bdf8',
+    pillActive: 'bg-sky-500/25 border-sky-400/60 text-sky-100',
+    pinClass: 'mapify-poi-pin--restroom',
+    maxItems: 8,
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><circle cx="8" cy="5.5" r="1.8"/><path d="M6 10h4l.8 5H9.5v5h-3v-5H5.2L6 10Z"/><circle cx="16.5" cy="5.5" r="1.8"/><path d="M14.3 10h4.4l1.3 5h-2v5h-3v-5h-2l1.3-5Z"/></svg>`
+  },
+  gas: {
+    key: 'gas',
+    label: 'Gas',
+    fullLabel: 'Gas Station',
+    accent: '#34d399',
+    pillActive: 'bg-emerald-500/25 border-emerald-400/60 text-emerald-100',
+    pinClass: 'mapify-poi-pin--gas',
+    maxItems: 8,
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M4 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14"/><path d="M2 20h14"/><path d="M6 8h6"/><path d="M14 12h2a2 2 0 0 1 2 2v3a1.5 1.5 0 0 0 3 0V9.5L18.5 7"/></svg>`
+  },
+  parking: {
+    key: 'parking',
+    label: 'Parking',
+    fullLabel: 'Parking Area',
+    accent: '#818cf8',
+    pillActive: 'bg-indigo-500/25 border-indigo-400/60 text-indigo-100',
+    pinClass: 'mapify-poi-pin--parking',
+    maxItems: 8,
+    svg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M9.5 16V8h3.2a2.4 2.4 0 0 1 0 4.8H9.5"/></svg>`
+  }
+};
+
+const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter'
+];
+const POI_CACHE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Internal Mapify Controller State
@@ -99,6 +157,8 @@ const mapState = {
   tileLayers: [],
   routeLayerGroup: null,
   markerLayerGroup: null,
+  basemapDecorLayerGroup: null,
+  poiLayerGroup: null,
   tourLayerGroup: null,
   resizeObserver: null,
   theme: 'dark',
@@ -108,8 +168,19 @@ const mapState = {
   tourSequence: [],
   currentBoundsPoints: [],
   lastFitSignature: '',
+  lastTripStats: null,
+  lastMapData: null,
   tourTimer: null,
-  isTourPlaying: false
+  isTourPlaying: false,
+  // Dark Mode Nearby POI Discovery State
+  activePoiCategories: new Set(['restaurant', 'attraction', 'restroom', 'gas', 'parking']),
+  poiCache: new Map(),
+  currentPois: [],
+  lastPoiSignature: '',
+  poiLoading: false,
+  poiRequestId: 0,
+  poiNeedsAreaScan: false,
+  ignoreNextMoveEnd: false
 };
 
 function stopRouteTour(updateBtn = true) {
@@ -131,6 +202,51 @@ function stopRouteTour(updateBtn = true) {
   }
 }
 
+/**
+ * Sync Canvas Theme Classes, Legend Styling & Dark Nearby POI Bar Visibility
+ */
+function syncThemeChrome() {
+  const canvasEl = document.getElementById('mapifyCanvas');
+  const stageWrap = document.getElementById('mapifyStageWrap');
+  const legendPill = document.getElementById('mapifyLegendPill');
+  const poiDock = document.getElementById('mapifyPoiDock');
+
+  const isBasemap = mapState.theme === 'basemap';
+  const isDark = mapState.theme === 'dark';
+
+  if (canvasEl) {
+    canvasEl.classList.toggle('mapify-theme--basemap', isBasemap);
+    canvasEl.classList.toggle('mapify-theme--dark', isDark);
+  }
+  if (stageWrap) {
+    stageWrap.style.backgroundColor = isBasemap ? '#eaf2f8' : '#0b0e15';
+  }
+
+  if (legendPill) {
+    if (isBasemap) {
+      legendPill.className = 'pointer-events-none absolute top-3 left-3 z-[400] hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-xl border border-slate-900/12 text-[10px] font-semibold text-slate-700 shadow-md';
+      legendPill.innerHTML = `
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-600 inline-block rounded-full"></span>Drive</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-b-2 border-dotted border-emerald-600 inline-block"></span>Walk</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>Fixed</span>
+        <span class="pl-2 border-l border-slate-900/15 text-sky-600 font-bold">Clean Basemap</span>
+      `;
+    } else {
+      legendPill.className = 'pointer-events-none absolute top-3 left-3 z-[400] hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-full bg-[#12151f]/85 backdrop-blur-xl border border-white/15 text-[10px] font-semibold text-white/80 shadow-lg';
+      legendPill.innerHTML = `
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-sky-400 inline-block"></span>Drive</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-b-2 border-dotted border-emerald-400 inline-block"></span>Walk</span>
+        <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Fixed</span>
+      `;
+    }
+  }
+
+  if (poiDock) {
+    const showDock = isDark && !mapState.isCollapsed && (mapState.lastMapData?.stops?.length || 0) > 0;
+    poiDock.classList.toggle('hidden', !showDock);
+  }
+}
+
 function setMapTileTheme(themeKey) {
   if (!MAP_TILE_THEMES[themeKey]) return;
   mapState.theme = themeKey;
@@ -142,6 +258,8 @@ function setMapTileTheme(themeKey) {
       : 'px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer transition-all';
   });
 
+  syncThemeChrome();
+
   if (!mapState.map || !window.L) return;
 
   mapState.tileLayers.forEach((layer) => mapState.map.removeLayer(layer));
@@ -149,14 +267,30 @@ function setMapTileTheme(themeKey) {
 
   const cfg = MAP_TILE_THEMES[themeKey];
   cfg.layers.forEach((layerCfg) => {
-    const layer = window.L.tileLayer(layerCfg.url, {
+    const tileOpts = {
       attribution: cfg.attribution,
       maxNativeZoom: layerCfg.maxNativeZoom || 18,
       maxZoom: cfg.maxZoom || 19,
       zIndex: layerCfg.zIndex || 1
-    }).addTo(mapState.map);
+    };
+    if (layerCfg.subdomains) tileOpts.subdomains = layerCfg.subdomains;
+    if (layerCfg.className) tileOpts.className = layerCfg.className;
+
+    const layer = window.L.tileLayer(layerCfg.url, tileOpts).addTo(mapState.map);
     mapState.tileLayers.push(layer);
   });
+
+  // Re-draw vector overlays immediately so Basemap halos/pills or Dark POIs update right away
+  if (mapState.lastMapData) {
+    drawMapifyVectorLayers(mapState.lastMapData, false);
+  }
+
+  if (themeKey === 'dark') {
+    syncDarkNearbyPois(false);
+  } else {
+    mapState.poiLayerGroup?.clearLayers();
+    renderPoiFilterBar();
+  }
 }
 
 export function invalidateMapifySize(refit = false) {
@@ -174,6 +308,8 @@ function fitMapToBounds(points, force = false) {
   if (!force && sig === mapState.lastFitSignature) return;
   mapState.lastFitSignature = sig;
 
+  mapState.ignoreNextMoveEnd = true;
+
   if (points.length === 1) {
     mapState.map.setView(points[0], 13, { animate: true });
     return;
@@ -182,8 +318,8 @@ function fitMapToBounds(points, force = false) {
   const bounds = window.L.latLngBounds(points);
   if (bounds.isValid()) {
     mapState.map.fitBounds(bounds, {
-      paddingTopLeft: [36, 48],
-      paddingBottomRight: [36, 48],
+      paddingTopLeft: [36, 52],
+      paddingBottomRight: [36, 62],
       maxZoom: 14,
       animate: true
     });
@@ -224,6 +360,457 @@ function formatGroupPinLabel(groupStops, showAllDays) {
 }
 
 /**
+ * ============================================================================
+ * DARK MODE: LIVE NEARBY PLACES ENGINE (OpenStreetMap Overpass API + Caching)
+ * ============================================================================
+ */
+
+function classifyOverpassElement(el) {
+  const tags = el?.tags || {};
+  const amenity = String(tags.amenity || '').toLowerCase();
+  const tourism = String(tags.tourism || '').toLowerCase();
+  const leisure = String(tags.leisure || '').toLowerCase();
+
+  let category = null;
+  if (['restaurant', 'cafe', 'fast_food', 'bakery', 'ice_cream', 'food_court'].includes(amenity)) {
+    category = 'restaurant';
+  } else if (['attraction', 'museum', 'zoo', 'theme_park', 'viewpoint', 'gallery', 'artwork'].includes(tourism) || leisure === 'park') {
+    category = 'attraction';
+  } else if (amenity === 'toilets') {
+    category = 'restroom';
+  } else if (amenity === 'fuel') {
+    category = 'gas';
+  } else if (amenity === 'parking') {
+    category = 'parking';
+  }
+
+  if (!category) return null;
+
+  const lat = Number(el.lat ?? el.center?.lat);
+  const lng = Number(el.lon ?? el.center?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const rawName = String(tags.name || tags.brand || tags.operator || '').trim();
+  const fallbackNames = {
+    restaurant: 'Local Dining Spot',
+    attraction: tourism ? `${tourism.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}` : 'Scenic Park & Sight',
+    restroom: 'Public Restroom',
+    gas: 'Gas Station',
+    parking: tags.parking === 'multi-storey' ? 'Parking Structure' : 'Public Parking'
+  };
+
+  // Skip unnamed restaurants/attractions so results stay high-quality
+  if ((category === 'restaurant' || category === 'attraction') && !rawName) return null;
+
+  const cuisine = tags.cuisine
+    ? String(tags.cuisine).split(';')[0].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    : '';
+
+  const addressParts = [
+    [tags['addr:housenumber'], tags['addr:street']].filter(Boolean).join(' '),
+    tags['addr:city']
+  ].filter(Boolean);
+
+  const detailTags = [];
+  if (cuisine) detailTags.push(cuisine);
+  if (tags.opening_hours) detailTags.push(String(tags.opening_hours).slice(0, 32));
+  if (category === 'parking' && tags.fee) detailTags.push(tags.fee === 'no' ? 'Free Parking' : 'Paid Parking');
+  if (category === 'restroom' && tags.wheelchair === 'yes') detailTags.push('Accessible');
+  if (category === 'gas' && tags.brand && tags.brand !== rawName) detailTags.push(tags.brand);
+
+  return {
+    id: `${el.type || 'n'}-${el.id}`,
+    category,
+    name: rawName || fallbackNames[category],
+    lat,
+    lng,
+    address: addressParts.join(', '),
+    metaLine: detailTags.join(' · '),
+    website: tags.website || ''
+  };
+}
+
+function buildOverpassQueryForCenters(centers, radiusMeters = 1400) {
+  const blocks = [];
+  centers.forEach(({ lat, lng }) => {
+    const c = `around:${radiusMeters},${lat.toFixed(4)},${lng.toFixed(4)}`;
+    blocks.push(
+      `nwr["amenity"~"^(restaurant|cafe|fast_food|bakery|ice_cream)$"]["name"](${c});`,
+      `nwr["tourism"~"^(attraction|museum|zoo|theme_park|viewpoint|gallery)$"]["name"](${c});`,
+      `nwr["amenity"="toilets"](${c});`,
+      `nwr["amenity"="fuel"](${c});`,
+      `nwr["amenity"="parking"](${c});`
+    );
+  });
+  return `[out:json][timeout:12];(${blocks.join('')});out center 160;`;
+}
+
+function buildOverpassQueryForViewport(bounds) {
+  const s = bounds.getSouth().toFixed(4);
+  const w = bounds.getWest().toFixed(4);
+  const n = bounds.getNorth().toFixed(4);
+  const e = bounds.getEast().toFixed(4);
+  const b = `${s},${w},${n},${e}`;
+  return `[out:json][timeout:12];(
+    nwr["amenity"~"^(restaurant|cafe|fast_food|bakery|ice_cream)$"]["name"](${b});
+    nwr["tourism"~"^(attraction|museum|zoo|theme_park|viewpoint|gallery)$"]["name"](${b});
+    nwr["amenity"="toilets"](${b});
+    nwr["amenity"="fuel"](${b});
+    nwr["amenity"="parking"](${b});
+  );out center 160;`;
+}
+
+async function fetchOverpassJson(query) {
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9500);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && Array.isArray(data.elements)) return data.elements;
+    } catch (err) {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
+/**
+ * Deduplicate & Spatially Space Nearby POIs so Pins Stay Crisp, Cute & Uncluttered
+ */
+function curateNearbyPois(rawElements, anchorCoordsList) {
+  const parsed = rawElements.map(classifyOverpassElement).filter(Boolean);
+  const buckets = {
+    restaurant: [],
+    attraction: [],
+    restroom: [],
+    gas: [],
+    parking: []
+  };
+
+  parsed.forEach((poi) => {
+    let minMiles = Infinity;
+    anchorCoordsList.forEach((anchor) => {
+      const d = haversineMiles({ lat: poi.lat, lng: poi.lng }, anchor);
+      if (d < minMiles) minMiles = d;
+    });
+    poi.distanceMiles = Number.isFinite(minMiles) ? Number(minMiles.toFixed(2)) : null;
+    buckets[poi.category]?.push(poi);
+  });
+
+  const curated = [];
+
+  Object.entries(DARK_POI_CATEGORIES).forEach(([catKey, catMeta]) => {
+    const sorted = (buckets[catKey] || []).sort((a, b) => {
+      const da = a.distanceMiles ?? 99;
+      const db = b.distanceMiles ?? 99;
+      return da - db;
+    });
+
+    const chosen = [];
+    const seenNames = new Set();
+
+    for (const item of sorted) {
+      if (chosen.length >= catMeta.maxItems) break;
+
+      const normName = item.name.toLowerCase();
+      if (catKey === 'restaurant' || catKey === 'attraction') {
+        if (seenNames.has(normName)) continue;
+      }
+
+      // Avoid stacking two POIs of the same type right on top of each other (~120m spacing)
+      const tooCloseSameCat = chosen.some(
+        (other) => Math.abs(other.lat - item.lat) < 0.0011 && Math.abs(other.lng - item.lng) < 0.0011
+      );
+      if (tooCloseSameCat) continue;
+
+      // Avoid hiding right underneath an itinerary stop marker
+      const overlapsStop = anchorCoordsList.some(
+        (anchor) => Math.abs(anchor.lat - item.lat) < 0.00025 && Math.abs(anchor.lng - item.lng) < 0.00025
+      );
+      if (overlapsStop) continue;
+
+      seenNames.add(normName);
+      chosen.push(item);
+    }
+
+    curated.push(...chosen);
+  });
+
+  return curated;
+}
+
+function getPoiAnchorCenters(stops) {
+  const unique = [];
+  (stops || []).forEach((s) => {
+    if (!s?.coords) return;
+    const exists = unique.some(
+      (u) => Math.abs(u.lat - s.coords.lat) < 0.012 && Math.abs(u.lng - s.coords.lng) < 0.012
+    );
+    if (!exists) unique.push(s.coords);
+  });
+  return unique.slice(0, 4);
+}
+
+function buildPoiPopupHtml(poi) {
+  const meta = DARK_POI_CATEGORIES[poi.category] || DARK_POI_CATEGORIES.restaurant;
+  const searchQuery = poi.address ? `${poi.name}, ${poi.address}` : `${poi.name} ${poi.lat.toFixed(5)},${poi.lng.toFixed(5)}`;
+  const mapsUrl = getStopMapUrl(searchQuery);
+  const distLabel = Number.isFinite(poi.distanceMiles)
+    ? (poi.distanceMiles < 0.1 ? 'Steps away' : `${formatDistance(poi.distanceMiles)} from stop`)
+    : 'Nearby';
+
+  return `
+    <div class="space-y-2 text-xs text-white min-w-[210px] max-w-[265px]">
+      <div class="flex items-center justify-between gap-2">
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${meta.pillActive}">
+          <span>${meta.svg}</span>
+          <span>${esc(meta.fullLabel)}</span>
+        </span>
+      </div>
+
+      <div>
+        <h4 class="text-sm font-bold text-white leading-snug">${esc(poi.name)}</h4>
+        ${poi.metaLine ? `<div class="text-[11px] text-white/65 mt-0.5">${esc(poi.metaLine)}</div>` : ''}
+      </div>
+
+      ${poi.address ? `
+        <div class="text-[11px] text-white/75 flex items-start gap-1.5">
+          <span class="text-sky-300 shrink-0 mt-0.5">${ICONS.pin}</span>
+          <span class="break-words">${esc(poi.address)}</span>
+        </div>
+      ` : ''}
+
+      <div class="pt-1.5 border-t border-white/12 flex items-center justify-between gap-2">
+        <span class="text-[10px] font-semibold text-white/60 tabular-nums">${esc(distLabel)}</span>
+        <a
+          href="${esc(mapsUrl)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="px-2.5 py-1 rounded-xl bg-white/12 hover:bg-sky-500/30 border border-white/15 text-white text-[10px] font-semibold transition-colors"
+        >Open Maps ↗</a>
+      </div>
+    </div>
+  `;
+}
+
+function renderPoiMarkers() {
+  if (!mapState.poiLayerGroup || !window.L) return;
+  mapState.poiLayerGroup.clearLayers();
+
+  if (mapState.theme !== 'dark' || mapState.isCollapsed) return;
+
+  const L = window.L;
+  const visiblePois = mapState.currentPois.filter((p) => mapState.activePoiCategories.has(p.category));
+
+  visiblePois.forEach((poi, idx) => {
+    const meta = DARK_POI_CATEGORIES[poi.category];
+    if (!meta) return;
+
+    const popDelay = Math.min(idx * 24, 480);
+    const ringDelay = (idx % 6) * 380;
+
+    const icon = L.divIcon({
+      className: 'mapify-poi-wrap',
+      html: `
+        <div class="mapify-poi-pin ${meta.pinClass}" style="--poi-delay: ${popDelay}ms; --poi-ring-delay: ${ringDelay}ms;" title="${esc(poi.name)} · ${esc(meta.fullLabel)}">
+          <span class="mapify-poi-ring"></span>
+          <span class="mapify-poi-glyph">${meta.svg}</span>
+        </div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -16]
+    });
+
+    const marker = L.marker([poi.lat, poi.lng], {
+      icon,
+      zIndexOffset: -50
+    }).addTo(mapState.poiLayerGroup);
+
+    marker.bindPopup(buildPoiPopupHtml(poi), {
+      className: 'mapify-glass-popup',
+      maxWidth: 280
+    });
+  });
+}
+
+function renderPoiFilterBar() {
+  const dock = document.getElementById('mapifyPoiDock');
+  if (!dock) return;
+
+  const hasStops = (mapState.lastMapData?.stops?.length || 0) > 0;
+  if (mapState.theme !== 'dark' || mapState.isCollapsed || !hasStops) {
+    dock.classList.add('hidden');
+    return;
+  }
+
+  dock.classList.remove('hidden');
+
+  const counts = { restaurant: 0, attraction: 0, restroom: 0, gas: 0, parking: 0 };
+  mapState.currentPois.forEach((p) => {
+    if (counts[p.category] !== undefined) counts[p.category]++;
+  });
+
+  const pillsHtml = Object.values(DARK_POI_CATEGORIES).map((cat) => {
+    const isActive = mapState.activePoiCategories.has(cat.key);
+    const count = counts[cat.key] || 0;
+    return `
+      <button
+        type="button"
+        data-poi-toggle="${cat.key}"
+        title="Toggle nearby ${esc(cat.fullLabel)}"
+        class="mapify-poi-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] sm:text-[11px] font-semibold cursor-pointer ${
+          isActive
+            ? cat.pillActive
+            : 'bg-white/[0.04] border-white/10 text-white/40 hover:text-white/75'
+        }"
+      >
+        <span class="shrink-0" style="color: ${isActive ? cat.accent : 'currentColor'};">${cat.svg}</span>
+        <span>${esc(cat.label)}</span>
+        <span class="text-[9px] opacity-80 tabular-nums">${count}</span>
+      </button>
+    `;
+  }).join('');
+
+  const scanHighlight = mapState.poiNeedsAreaScan && !mapState.poiLoading
+    ? 'bg-sky-500/30 border-sky-300/60 text-white animate-pulse'
+    : 'bg-white/10 hover:bg-white/20 border-white/15 text-white/85';
+
+  dock.innerHTML = `
+    <div class="mapify-poi-bar inline-flex flex-wrap items-center gap-1.5 px-2.5 py-2 rounded-2xl max-w-full">
+      <span class="hidden md:inline-flex items-center gap-1.5 pr-1.5 mr-0.5 border-r border-white/12 text-[10px] font-bold uppercase tracking-wider text-white/65">
+        <span class="w-1.5 h-1.5 rounded-full ${mapState.poiLoading ? 'bg-amber-300 animate-ping' : 'bg-emerald-400'}"></span>
+        <span>${mapState.poiLoading ? 'Scanning…' : 'Nearby'}</span>
+      </span>
+      ${pillsHtml}
+      <button
+        type="button"
+        id="mapifyPoiScanBtn"
+        title="Scan visible map area for restaurants, sights, restrooms, gas & parking"
+        class="mapify-poi-pill inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[10px] font-semibold cursor-pointer ${scanHighlight}"
+      >
+        <span>${mapState.poiLoading ? 'Loading…' : mapState.poiNeedsAreaScan ? 'Scan Area' : 'Refresh'}</span>
+      </button>
+    </div>
+  `;
+
+  dock.querySelectorAll('[data-poi-toggle]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.poiToggle;
+      if (mapState.activePoiCategories.has(key)) {
+        mapState.activePoiCategories.delete(key);
+      } else {
+        mapState.activePoiCategories.add(key);
+      }
+      renderPoiFilterBar();
+      renderPoiMarkers();
+    });
+  });
+
+  document.getElementById('mapifyPoiScanBtn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    syncDarkNearbyPois(true, true);
+  });
+}
+
+async function syncDarkNearbyPois(forceRefresh = false, useViewportBounds = false) {
+  if (mapState.theme !== 'dark' || mapState.isCollapsed || !mapState.map) return;
+
+  const stops = mapState.lastMapData?.stops || [];
+  if (stops.length === 0) {
+    mapState.currentPois = [];
+    mapState.poiLayerGroup?.clearLayers();
+    renderPoiFilterBar();
+    return;
+  }
+
+  let query = '';
+  let cacheKey = '';
+  let anchorCenters = getPoiAnchorCenters(stops);
+
+  if (useViewportBounds && mapState.map) {
+    const bounds = mapState.map.getBounds();
+    const latSpan = Math.abs(bounds.getNorth() - bounds.getSouth());
+    const lngSpan = Math.abs(bounds.getEast() - bounds.getWest());
+    const center = mapState.map.getCenter();
+
+    if (latSpan <= 0.24 && lngSpan <= 0.28) {
+      query = buildOverpassQueryForViewport(bounds);
+      cacheKey = `vp:${bounds.getSouth().toFixed(2)},${bounds.getWest().toFixed(2)},${bounds.getNorth().toFixed(2)},${bounds.getEast().toFixed(2)}`;
+      anchorCenters = [{ lat: center.lat, lng: center.lng }];
+    } else {
+      const centerList = [{ lat: center.lat, lng: center.lng }, ...anchorCenters.slice(0, 2)];
+      query = buildOverpassQueryForCenters(centerList, 1800);
+      cacheKey = `ct:${center.lat.toFixed(2)},${center.lng.toFixed(2)}`;
+      anchorCenters = centerList;
+    }
+  } else {
+    if (anchorCenters.length === 0) return;
+    const radius = anchorCenters.length === 1 ? 1800 : 1400;
+    query = buildOverpassQueryForCenters(anchorCenters, radius);
+    cacheKey = `st:${anchorCenters.map((c) => `${c.lat.toFixed(2)},${c.lng.toFixed(2)}`).join('|')}`;
+  }
+
+  if (!forceRefresh && cacheKey === mapState.lastPoiSignature && mapState.currentPois.length > 0) {
+    mapState.poiNeedsAreaScan = false;
+    renderPoiFilterBar();
+    renderPoiMarkers();
+    return;
+  }
+
+  const cached = mapState.poiCache.get(cacheKey);
+  if (!forceRefresh && cached && Date.now() - cached.fetchedAt < POI_CACHE_TTL_MS) {
+    mapState.lastPoiSignature = cacheKey;
+    mapState.currentPois = cached.items;
+    mapState.poiNeedsAreaScan = false;
+    renderPoiFilterBar();
+    renderPoiMarkers();
+    return;
+  }
+
+  const reqId = ++mapState.poiRequestId;
+  mapState.poiLoading = true;
+  mapState.poiNeedsAreaScan = false;
+  renderPoiFilterBar();
+
+  const elements = await fetchOverpassJson(query);
+  if (reqId !== mapState.poiRequestId) return;
+
+  mapState.poiLoading = false;
+
+  if (elements) {
+    const curated = curateNearbyPois(elements, anchorCenters);
+    mapState.poiCache.set(cacheKey, { items: curated, fetchedAt: Date.now() });
+    mapState.lastPoiSignature = cacheKey;
+    mapState.currentPois = curated;
+
+    if (mapState.theme === 'dark') {
+      renderPoiMarkers();
+      if (forceRefresh) {
+        showToast(
+          curated.length > 0
+            ? `Found ${curated.length} nearby places in this area`
+            : 'No extra places found right here — try zooming closer'
+        );
+      }
+    }
+  } else if (forceRefresh) {
+    showToast('Nearby places server busy — try refreshing in a moment', 'error');
+  }
+
+  renderPoiFilterBar();
+}
+
+/**
  * Initialize Leaflet Instance Once Inside #mapifyCanvas
  */
 function ensureLeafletInitialized() {
@@ -258,9 +845,22 @@ function ensureLeafletInitialized() {
   canvasEl.addEventListener('mouseleave', () => map.scrollWheelZoom.disable());
 
   mapState.map = map;
+  mapState.basemapDecorLayerGroup = L.layerGroup().addTo(map);
   mapState.routeLayerGroup = L.layerGroup().addTo(map);
+  mapState.poiLayerGroup = L.layerGroup().addTo(map);
   mapState.markerLayerGroup = L.layerGroup().addTo(map);
   mapState.tourLayerGroup = L.layerGroup().addTo(map);
+
+  map.on('moveend', () => {
+    if (mapState.ignoreNextMoveEnd) {
+      mapState.ignoreNextMoveEnd = false;
+      return;
+    }
+    if (mapState.theme === 'dark' && !mapState.poiLoading && !mapState.isTourPlaying) {
+      mapState.poiNeedsAreaScan = true;
+      renderPoiFilterBar();
+    }
+  });
 
   setMapTileTheme(mapState.theme);
 
@@ -316,9 +916,9 @@ function ensureMapifyShell() {
         <!-- Mapify Interactive Toolbar -->
         <div class="flex flex-wrap items-center gap-1.5">
           <div class="inline-flex items-center p-0.5 rounded-full bg-black/40 border border-white/12">
-            <button type="button" data-mapify-theme="dark" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/22 text-white shadow cursor-pointer">Dark</button>
-            <button type="button" data-mapify-theme="street" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Street</button>
-            <button type="button" data-mapify-theme="satellite" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Satellite</button>
+            <button type="button" data-mapify-theme="dark" title="Dark map with animated nearby restaurants, attractions, restrooms, gas & parking" class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-white/22 text-white shadow cursor-pointer">Dark</button>
+            <button type="button" data-mapify-theme="street" title="Classic street map" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Street</button>
+            <button type="button" data-mapify-theme="basemap" title="Clean pastel editorial basemap with route pills" class="px-2.5 py-1 rounded-full text-[11px] font-medium text-white/60 hover:text-white cursor-pointer">Basemap</button>
           </div>
 
           <button
@@ -366,6 +966,9 @@ function ensureMapifyShell() {
           <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-b-2 border-dotted border-emerald-400 inline-block"></span>Walk</span>
           <span class="inline-flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span>Fixed</span>
         </div>
+
+        <!-- Dark Mode Floating Nearby Places Filter Dock -->
+        <div id="mapifyPoiDock" class="hidden absolute bottom-3 left-3 right-3 sm:right-auto z-[410] flex items-center pointer-events-auto"></div>
 
         <!-- Empty State Overlay -->
         <div id="mapifyEmptyOverlay" class="hidden pointer-events-none absolute inset-0 z-[400] flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs">
@@ -419,8 +1022,12 @@ function ensureMapifyShell() {
     } else {
       wrap.classList.remove('hidden');
       lbl.textContent = 'Hide Map';
-      setTimeout(() => invalidateMapifySize(true), 120);
+      setTimeout(() => {
+        invalidateMapifySize(true);
+        if (mapState.theme === 'dark') syncDarkNearbyPois(false);
+      }, 120);
     }
+    syncThemeChrome();
   });
 
   document.getElementById('mapifyTourBtn')?.addEventListener('click', () => {
@@ -481,6 +1088,7 @@ function startAnimatedRouteTour() {
     });
     L.marker(latlng, { icon: pulseIcon, interactive: false }).addTo(mapState.tourLayerGroup);
 
+    mapState.ignoreNextMoveEnd = true;
     mapState.map.flyTo(latlng, 13, { duration: 0.9 });
     setTimeout(() => {
       if (!mapState.isTourPlaying) return;
@@ -770,41 +1378,22 @@ function buildPinPopupHtml(groupStops, combinedLabel) {
 }
 
 /**
- * Master Mapify Renderer (Syncs Map Pins, Polylines & Bottom 4-Graphic HUD)
+ * Draw Vector Routes, Stops, and Style-Specific Layers (Basemap Halos & Floating Leg Pills)
  */
-export function renderMapify(tripStats) {
-  if (!ensureMapifyShell()) return;
-
-  const state = appStore.state;
-  const focusedDay = state.days[appStore.activeCarouselIndex] || state.days[0];
-  const scopeDayId = appStore.showAllDays ? null : focusedDay?.id || null;
-  const mapData = getTripMapData(state, scopeDayId);
-
-  renderMapifyBottomHud(tripStats, mapData);
-
-  const scopePill = document.getElementById('mapifyScopePill');
-  const subtitleEl = document.getElementById('mapifySubtitle');
-  if (scopePill) {
-    scopePill.textContent = appStore.showAllDays
-      ? `All ${state.days.length} Days`
-      : `${focusedDay?.shortDay || 'Day 1'} · ${focusedDay?.shortDate || ''}`;
-  }
-  if (subtitleEl) {
-    subtitleEl.textContent = appStore.showAllDays
-      ? `Full trip map · ${mapData.pinnedCount} pinned stop${mapData.pinnedCount === 1 ? '' : 's'}`
-      : `${focusedDay?.location || 'Itinerary'} · ${mapData.pinnedCount} pinned stop${mapData.pinnedCount === 1 ? '' : 's'}`;
-  }
-
-  if (!ensureLeafletInitialized() || mapState.isCollapsed) return;
+function drawMapifyVectorLayers(mapData, shouldFitBounds = false) {
+  if (!mapState.map || !window.L || mapState.isCollapsed) return;
 
   const L = window.L;
+  const isBasemap = mapState.theme === 'basemap';
+
   mapState.routeLayerGroup.clearLayers();
   mapState.markerLayerGroup.clearLayers();
+  mapState.basemapDecorLayerGroup.clearLayers();
   mapState.markersByEventId.clear();
   mapState.tourSequence = [];
 
   const emptyOverlay = document.getElementById('mapifyEmptyOverlay');
-  if (mapData.stops.length === 0) {
+  if (!mapData || mapData.stops.length === 0) {
     mapState.currentBoundsPoints = [];
     emptyOverlay?.classList.remove('hidden');
     return;
@@ -812,6 +1401,7 @@ export function renderMapify(tripStats) {
   emptyOverlay?.classList.add('hidden');
 
   const allBoundsPoints = [];
+  const placedBasemapBadges = [];
 
   // 1. Draw Real Road & Walking Polylines
   mapData.legs.forEach((leg) => {
@@ -828,18 +1418,27 @@ export function renderMapify(tripStats) {
 
     pathCoords.forEach((pt) => allBoundsPoints.push(pt));
 
-    const strokeColor = leg.hasWarning
-      ? '#fb7185'
-      : isWalk
-        ? '#34d399'
-        : appStore.showAllDays
-          ? palette.hex
-          : '#38bdf8';
+    const strokeColor = isBasemap
+      ? (leg.hasWarning
+          ? '#e11d48'
+          : isWalk
+            ? '#059669'
+            : appStore.showAllDays
+              ? palette.basemapHex
+              : '#0284c7')
+      : (leg.hasWarning
+          ? '#fb7185'
+          : isWalk
+            ? '#34d399'
+            : appStore.showAllDays
+              ? palette.hex
+              : '#38bdf8');
 
+    // Outer casing/glow
     L.polyline(pathCoords, {
-      color: strokeColor,
-      weight: isWalk ? 6 : 8,
-      opacity: 0.22,
+      color: isBasemap ? '#ffffff' : strokeColor,
+      weight: isBasemap ? (isWalk ? 6.5 : 7.5) : (isWalk ? 6 : 8),
+      opacity: isBasemap ? 0.88 : 0.22,
       lineCap: 'round',
       lineJoin: 'round',
       interactive: false
@@ -848,30 +1447,65 @@ export function renderMapify(tripStats) {
     const coreLine = L.polyline(pathCoords, {
       color: strokeColor,
       weight: isWalk ? 3.5 : 4,
-      opacity: 0.92,
+      opacity: isBasemap ? 0.95 : 0.92,
       dashArray: isWalk ? '5, 8' : leg.hasWarning ? '8, 6' : null,
       lineCap: 'round',
       lineJoin: 'round'
     }).addTo(mapState.routeLayerGroup);
 
     const legModeText = isWalk ? 'Walk' : 'Drive';
-    coreLine.bindPopup(
-      `
-        <div class="space-y-1.5 text-xs text-white min-w-[190px]">
-          <div class="text-[10px] font-bold uppercase tracking-wider text-sky-300">
-            ${esc(leg.dayShort)} · ${legModeText} Leg
-          </div>
-          <div class="text-sm font-bold text-white tabular-nums">
-            ${esc(formatDistance(leg.distanceMiles))} · ${esc(formatDuration(leg.durationMinutes))}
-          </div>
-          <div class="text-[11px] text-white/70 leading-snug">
-            <div><strong class="text-white/90">From:</strong> ${esc(leg.fromLocation)}</div>
-            <div><strong class="text-white/90">To:</strong> ${esc(leg.toLocation)}</div>
-          </div>
+    const legPopupHtml = `
+      <div class="space-y-1.5 text-xs text-white min-w-[190px]">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-sky-300">
+          ${esc(leg.dayShort)} · ${legModeText} Leg
         </div>
-      `,
-      { className: 'mapify-glass-popup', maxWidth: 270 }
-    );
+        <div class="text-sm font-bold text-white tabular-nums">
+          ${esc(formatDistance(leg.distanceMiles))} · ${esc(formatDuration(leg.durationMinutes))}
+        </div>
+        <div class="text-[11px] text-white/70 leading-snug">
+          <div><strong class="text-white/90">From:</strong> ${esc(leg.fromLocation)}</div>
+          <div><strong class="text-white/90">To:</strong> ${esc(leg.toLocation)}</div>
+        </div>
+      </div>
+    `;
+
+    coreLine.bindPopup(legPopupHtml, { className: 'mapify-glass-popup', maxWidth: 270 });
+
+    // Basemap Style Exclusive: Cute Floating Distance & Duration Pill Along Each Route Leg
+    if (isBasemap && Number.isFinite(leg.durationMinutes) && leg.distanceMiles > 0.25) {
+      const midPt = pathCoords[Math.floor(pathCoords.length / 2)];
+      if (midPt) {
+        const tooCloseToBadge = placedBasemapBadges.some(
+          (b) => Math.abs(b[0] - midPt[0]) < 0.014 && Math.abs(b[1] - midPt[1]) < 0.014
+        );
+        if (!tooCloseToBadge) {
+          placedBasemapBadges.push(midPt);
+          const pillTone = leg.hasWarning
+            ? 'mapify-basemap-leg-pill--warn'
+            : isWalk
+              ? 'mapify-basemap-leg-pill--walk'
+              : '';
+          const modeGlyph = isWalk ? ICONS.walk : ICONS.drive;
+          const badgeIcon = L.divIcon({
+            className: 'mapify-basemap-leg-wrap',
+            html: `
+              <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
+                <div class="mapify-basemap-leg-pill ${pillTone}">
+                  <span style="display:inline-flex;opacity:0.85;">${modeGlyph}</span>
+                  <span>${esc(formatDuration(leg.durationMinutes))}</span>
+                  <span style="opacity:0.4;">·</span>
+                  <span>${esc(formatDistance(leg.distanceMiles))}</span>
+                </div>
+              </div>
+            `,
+            iconSize: [126, 26],
+            iconAnchor: [63, 13]
+          });
+          const badgeMarker = L.marker(midPt, { icon: badgeIcon, zIndexOffset: 20 }).addTo(mapState.basemapDecorLayerGroup);
+          badgeMarker.bindPopup(legPopupHtml, { className: 'mapify-glass-popup', maxWidth: 270 });
+        }
+      }
+    }
   });
 
   // 2. Group Co-Located Stops & Draw Unified Numbered Category Pins (e.g. "2 & 6")
@@ -884,17 +1518,35 @@ export function renderMapify(tripStats) {
     const cat = getCategoryMeta(primaryStop.event.category);
     const palette = DAY_ROUTE_PALETTE[primaryStop.dayIndex % DAY_ROUTE_PALETTE.length];
     const [r, g, b] = cat.rgb || [56, 189, 248];
-    const pinColor = appStore.showAllDays ? palette.hex : `rgb(${r}, ${g}, ${b})`;
+    const pinColor = appStore.showAllDays
+      ? (isBasemap ? palette.basemapHex : palette.hex)
+      : `rgb(${r}, ${g}, ${b})`;
     const pinLabel = formatGroupPinLabel(groupStops, appStore.showAllDays);
     const anyFixed = groupStops.some((s) => s.event.isFixed);
     const allCompleted = groupStops.every((s) => s.event.completed);
 
     allBoundsPoints.push([coords.lat, coords.lng]);
 
+    // Basemap Style Exclusive: Soft Pastel Destination Glow Halo Behind Each Stop
+    if (isBasemap) {
+      const haloRgb = appStore.showAllDays ? palette.rgb : `${r}, ${g}, ${b}`;
+      const haloIcon = L.divIcon({
+        className: 'mapify-basemap-halo-wrap',
+        html: `<div class="mapify-basemap-halo" style="--halo-rgb: ${haloRgb};"></div>`,
+        iconSize: [58, 58],
+        iconAnchor: [29, 29]
+      });
+      L.marker([coords.lat, coords.lng], {
+        icon: haloIcon,
+        interactive: false,
+        zIndexOffset: -100
+      }).addTo(mapState.basemapDecorLayerGroup);
+    }
+
     const pillWidth = Math.max(32, Math.round(pinLabel.length * 7.6 + 18));
     const pinHtml = `
       <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
-        <div class="mapify-pin ${allCompleted ? 'is-completed' : ''} ${anyFixed ? 'is-fixed' : ''}" style="--pin-rgb: ${r}, ${g}, ${b}; --pin-accent: ${pinColor};">
+        <div class="mapify-pin ${isBasemap ? 'is-basemap' : ''} ${allCompleted ? 'is-completed' : ''} ${anyFixed ? 'is-fixed' : ''}" style="--pin-rgb: ${r}, ${g}, ${b}; --pin-accent: ${pinColor};">
           <span class="mapify-pin-num">${esc(pinLabel)}</span>
           ${anyFixed ? `<span class="mapify-pin-badge mapify-pin-badge--lock" title="Fixed Time">🔒</span>` : ''}
           ${allCompleted ? `<span class="mapify-pin-badge mapify-pin-badge--done" title="Completed">✓</span>` : ''}
@@ -910,7 +1562,7 @@ export function renderMapify(tripStats) {
       popupAnchor: [0, -18]
     });
 
-    const marker = L.marker([coords.lat, coords.lng], { icon }).addTo(mapState.markerLayerGroup);
+    const marker = L.marker([coords.lat, coords.lng], { icon, zIndexOffset: 100 }).addTo(mapState.markerLayerGroup);
     const popupHtml = buildPinPopupHtml(groupStops, pinLabel);
 
     marker.bindPopup(popupHtml, { className: 'mapify-glass-popup', maxWidth: 310 });
@@ -939,7 +1591,51 @@ export function renderMapify(tripStats) {
 
   mapState.currentBoundsPoints = allBoundsPoints;
   mapState.map.invalidateSize({ animate: false });
-  fitMapToBounds(allBoundsPoints, false);
+  if (shouldFitBounds) {
+    fitMapToBounds(allBoundsPoints, false);
+  }
+}
+
+/**
+ * Master Mapify Renderer (Syncs Map Pins, Polylines, Style Layers & Bottom 4-Graphic HUD)
+ */
+export function renderMapify(tripStats) {
+  if (!ensureMapifyShell()) return;
+
+  const state = appStore.state;
+  const focusedDay = state.days[appStore.activeCarouselIndex] || state.days[0];
+  const scopeDayId = appStore.showAllDays ? null : focusedDay?.id || null;
+  const mapData = getTripMapData(state, scopeDayId);
+
+  mapState.lastTripStats = tripStats;
+  mapState.lastMapData = mapData;
+
+  renderMapifyBottomHud(tripStats, mapData);
+
+  const scopePill = document.getElementById('mapifyScopePill');
+  const subtitleEl = document.getElementById('mapifySubtitle');
+  if (scopePill) {
+    scopePill.textContent = appStore.showAllDays
+      ? `All ${state.days.length} Days`
+      : `${focusedDay?.shortDay || 'Day 1'} · ${focusedDay?.shortDate || ''}`;
+  }
+  if (subtitleEl) {
+    subtitleEl.textContent = appStore.showAllDays
+      ? `Full trip map · ${mapData.pinnedCount} pinned stop${mapData.pinnedCount === 1 ? '' : 's'}`
+      : `${focusedDay?.location || 'Itinerary'} · ${mapData.pinnedCount} pinned stop${mapData.pinnedCount === 1 ? '' : 's'}`;
+  }
+
+  if (!ensureLeafletInitialized() || mapState.isCollapsed) return;
+
+  syncThemeChrome();
+  drawMapifyVectorLayers(mapData, true);
+
+  if (mapState.theme === 'dark') {
+    syncDarkNearbyPois(false);
+  } else {
+    mapState.poiLayerGroup?.clearLayers();
+    renderPoiFilterBar();
+  }
 }
 
 /**
@@ -958,6 +1654,7 @@ export function focusEventOnMap(dayId, eventId) {
   const marker = mapState.markersByEventId.get(eventId);
   if (marker && mapState.map) {
     const latlng = marker.getLatLng();
+    mapState.ignoreNextMoveEnd = true;
     mapState.map.flyTo(latlng, 14, { duration: 1.0 });
     setTimeout(() => {
       marker.openPopup();

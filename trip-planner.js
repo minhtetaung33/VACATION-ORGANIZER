@@ -6,7 +6,7 @@ import {
 } from './trip-timeline-engine.js';
 
 /**
- * Crisp Inline SVG Icon Library (Including Cute Booki Mascot & Rich-Text Icons)
+ * Crisp Inline SVG Icon Library (Including Cute Booki Mascot, Visibility & Rich-Text Icons)
  */
 export const ICONS = {
   booki: `<svg viewBox="0 0 32 32" fill="none" class="w-6 h-6">
@@ -36,6 +36,8 @@ export const ICONS = {
     <!-- Little Sparkle -->
     <path d="M26.5 22.5l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4Z" fill="#fef08a"/>
   </svg>`,
+  eye: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  eyeOff: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3.5 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>`,
   highlighter: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>`,
   listBullet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4.5" cy="6" r="1.2" fill="currentColor"/><circle cx="4.5" cy="12" r="1.2" fill="currentColor"/><circle cx="4.5" cy="18" r="1.2" fill="currentColor"/></svg>`,
   listNumber: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>`,
@@ -1475,6 +1477,8 @@ export const appStore = {
   activeCarouselIndex: 0,
   showAllDays: false,
   weatherPanelExpanded: true,
+  bookiPanelExpanded: true,
+  notesPanelExpanded: true,
   expandedBudgetIds: new Set(),
   vaultTypeFilter: 'all',
   vaultStatusFilter: 'all',
@@ -1961,6 +1965,8 @@ export function renderStaticIcons() {
   setHtml('nextIcon', ICONS.chevronRight);
   setHtml('copyNotesIcon', ICONS.copy);
   setHtml('bookiHeaderIcon', ICONS.booki);
+  setHtml('toggleBookiIcon', appStore.bookiPanelExpanded ? ICONS.eyeOff : ICONS.eye);
+  setHtml('toggleNotesChevron', ICONS.chevronDown);
   setHtml('addReservationIcon', ICONS.plus);
   setHtml('rteHighlightIcon', ICONS.highlighter);
   setHtml('rteBulletIcon', ICONS.listBullet);
@@ -2801,6 +2807,49 @@ export function setWeatherPanelExpanded(expanded) {
   if (label) label.textContent = expanded ? 'Hide' : 'Show 7-Day';
   if (chev) chev.classList.toggle('rotate-180', expanded);
   if (btn) btn.setAttribute('aria-expanded', String(expanded));
+}
+
+export function setBookiPanelExpanded(expanded) {
+  appStore.bookiPanelExpanded = Boolean(expanded);
+  const wrap = document.getElementById('bookiBodyWrap');
+  const iconEl = document.getElementById('toggleBookiIcon');
+  const btn = document.getElementById('toggleBookiBtn');
+  if (!wrap) return;
+
+  wrap.classList.toggle('hidden', !appStore.bookiPanelExpanded);
+  if (iconEl) iconEl.innerHTML = appStore.bookiPanelExpanded ? ICONS.eyeOff : ICONS.eye;
+  if (btn) {
+    const labelText = appStore.bookiPanelExpanded ? 'Hide Booki' : 'Show Booki';
+    btn.setAttribute('aria-expanded', String(appStore.bookiPanelExpanded));
+    btn.setAttribute('aria-label', labelText);
+    btn.title = labelText;
+    btn.className = appStore.bookiPanelExpanded
+      ? 'w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/80 hover:text-white flex items-center justify-center transition-all hover:scale-[1.03] active:scale-95 cursor-pointer shrink-0'
+      : 'w-9 h-9 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 hover:text-white flex items-center justify-center transition-all hover:scale-[1.03] active:scale-95 cursor-pointer shrink-0';
+  }
+}
+
+export function setNotesPanelExpanded(expanded) {
+  appStore.notesPanelExpanded = Boolean(expanded);
+  const wrap = document.getElementById('notesBodyWrap');
+  const label = document.getElementById('toggleNotesLabel');
+  const chev = document.getElementById('toggleNotesChevron');
+  const btn = document.getElementById('toggleNotesBtn');
+  if (!wrap) return;
+
+  wrap.classList.toggle('hidden', !appStore.notesPanelExpanded);
+  if (!appStore.notesPanelExpanded) {
+    document.getElementById('rteTextColorPopover')?.classList.add('hidden');
+    document.getElementById('rteBgColorPopover')?.classList.add('hidden');
+  }
+  if (label) label.textContent = appStore.notesPanelExpanded ? 'Hide' : 'Show';
+  if (chev) chev.classList.toggle('rotate-180', appStore.notesPanelExpanded);
+  if (btn) {
+    btn.setAttribute('aria-expanded', String(appStore.notesPanelExpanded));
+    btn.title = appStore.notesPanelExpanded
+      ? 'Hide Personal Trip Notes & Quick Reminders'
+      : 'Show Personal Trip Notes & Quick Reminders';
+  }
 }
 
 export async function syncLiveWeatherForActiveDay() {

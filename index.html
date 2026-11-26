@@ -381,7 +381,7 @@
         <!-- Subtle Top Gradient Accent Glow -->
         <div class="pointer-events-none absolute top-0 left-8 right-8 h-[2px] rounded-full bg-gradient-to-r from-orange-400/70 via-sky-400/80 to-emerald-400/70 opacity-75"></div>
 
-        <!-- Booki Header + Cute Icon + Live Status Counters + Add Booking -->
+        <!-- Booki Header + Cute Icon + Live Status Counters + Hide Icon + Add Booking -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-3 min-w-0">
             <div class="inline-flex items-center gap-2.5">
@@ -392,6 +392,16 @@
           </div>
 
           <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              id="toggleBookiBtn"
+              type="button"
+              aria-expanded="true"
+              aria-label="Hide Booki"
+              title="Hide Booki"
+              class="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white/80 hover:text-white flex items-center justify-center transition-all hover:scale-[1.03] active:scale-95 cursor-pointer shrink-0"
+            >
+              <span id="toggleBookiIcon" class="w-4 h-4 flex items-center justify-center"></span>
+            </button>
             <button id="addReservationBtn" type="button" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-gradient-to-r from-orange-500/90 to-sky-500/90 hover:from-orange-400 hover:to-sky-400 border border-white/25 text-white shadow-lg shadow-sky-500/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer">
               <span id="addReservationIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
               <span>Add Booking</span>
@@ -399,14 +409,17 @@
           </div>
         </div>
 
-        <!-- Interactive Filter Bar (Categories + Statuses) -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-3 border-t border-white/10">
-          <div id="vaultCategoryFilters" class="flex flex-wrap items-center gap-1.5"></div>
-          <div id="vaultStatusFilters" class="flex flex-wrap items-center gap-1.5"></div>
-        </div>
+        <!-- Collapsible Booki Filters & Bookings Grid -->
+        <div id="bookiBodyWrap" class="space-y-5">
+          <!-- Interactive Filter Bar (Categories + Statuses) -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-3 border-t border-white/10">
+            <div id="vaultCategoryFilters" class="flex flex-wrap items-center gap-1.5"></div>
+            <div id="vaultStatusFilters" class="flex flex-wrap items-center gap-1.5"></div>
+          </div>
 
-        <!-- Reservations & Bookings Cards Grid -->
-        <div id="reservationsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5"></div>
+          <!-- Reservations & Bookings Cards Grid -->
+          <div id="reservationsContainer" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5"></div>
+        </div>
 
         <!-- Integrated Rich-Text Personal Trip Notes & Quick Reminders -->
         <div class="rounded-2xl bg-black/30 border border-white/10 p-3.5 sm:p-4 space-y-3">
@@ -415,132 +428,147 @@
               <span class="w-2 h-2 rounded-full bg-gradient-to-r from-orange-400 to-sky-400"></span>
               <h4 class="text-xs sm:text-sm font-semibold text-white">Personal Trip Notes &amp; Quick Reminders</h4>
             </div>
-            <button id="copyNotesBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/10 text-white/90 transition-colors cursor-pointer shrink-0">
-              <span id="copyNotesIcon"></span>
-              <span>Copy Notes</span>
-            </button>
-          </div>
-
-          <!-- Notion / Word-Style Rich-Text Editor Shell -->
-          <div class="rte-shell">
-            <div id="notesToolbar" class="rte-toolbar" role="toolbar" aria-label="Text formatting toolbar">
-              <!-- Font Family -->
-              <select id="rteFontFamily" title="Font Family" aria-label="Font Family" class="rte-select">
-                <option value="Inter, ui-sans-serif, system-ui, sans-serif" class="bg-slate-900">Sans (Inter)</option>
-                <option value="Georgia, 'Times New Roman', serif" class="bg-slate-900">Serif (Georgia)</option>
-                <option value="'Trebuchet MS', 'Segoe UI', sans-serif" class="bg-slate-900">Rounded</option>
-                <option value="ui-monospace, SFMono-Regular, Menlo, monospace" class="bg-slate-900">Monospace</option>
-              </select>
-
-              <!-- Font Size -->
-              <select id="rteFontSize" title="Font Size" aria-label="Font Size" class="rte-select">
-                <option value="12px" class="bg-slate-900">12 px</option>
-                <option value="14px" class="bg-slate-900" selected>14 px</option>
-                <option value="16px" class="bg-slate-900">16 px</option>
-                <option value="18px" class="bg-slate-900">18 px</option>
-                <option value="20px" class="bg-slate-900">20 px</option>
-                <option value="24px" class="bg-slate-900">24 px</option>
-              </select>
-
-              <span class="rte-divider" aria-hidden="true"></span>
-
-              <!-- Text Emphasis -->
-              <button type="button" data-rte-cmd="bold" title="Bold (Ctrl+B)" class="rte-btn font-extrabold">B</button>
-              <button type="button" data-rte-cmd="italic" title="Italic (Ctrl+I)" class="rte-btn italic font-serif">I</button>
-              <button type="button" data-rte-cmd="underline" title="Underline (Ctrl+U)" class="rte-btn underline">U</button>
-              <button type="button" data-rte-cmd="strikeThrough" title="Strikethrough" class="rte-btn line-through">S</button>
-
-              <span class="rte-divider" aria-hidden="true"></span>
-
-              <!-- Text Color Picker Popover -->
-              <div class="relative">
-                <button id="rteTextColorBtn" type="button" title="Text Color" class="rte-btn flex-col leading-none py-0.5">
-                  <span class="text-[11px] font-bold">A</span>
-                  <span id="rteTextColorBar" class="rte-color-indicator bg-sky-300"></span>
-                </button>
-                <div id="rteTextColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
-                  <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Text Color</div>
-                  <div id="rteTextColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
-                  <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
-                    <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
-                      <span>Custom</span>
-                      <input id="rteTextColorCustom" type="color" value="#7dd3fc" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
-                    </label>
-                    <button type="button" data-rte-reset-text-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">Reset</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Background Highlight Color Picker Popover -->
-              <div class="relative">
-                <button id="rteBgColorBtn" type="button" title="Highlight Color" class="rte-btn flex-col leading-none py-0.5">
-                  <span id="rteHighlightIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
-                  <span id="rteBgColorBar" class="rte-color-indicator bg-amber-400"></span>
-                </button>
-                <div id="rteBgColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
-                  <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Highlight Color</div>
-                  <div id="rteBgColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
-                  <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
-                    <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
-                      <span>Custom</span>
-                      <input id="rteBgColorCustom" type="color" value="#f59e0b" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
-                    </label>
-                    <button type="button" data-rte-reset-bg-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">None</button>
-                  </div>
-                </div>
-              </div>
-
-              <span class="rte-divider" aria-hidden="true"></span>
-
-              <!-- Lists & Interactive Checklist -->
-              <button type="button" data-rte-cmd="insertUnorderedList" title="Bulleted List" class="rte-btn">
-                <span id="rteBulletIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button id="copyNotesBtn" type="button" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-medium bg-white/10 hover:bg-white/20 border border-white/10 text-white/90 transition-colors cursor-pointer shrink-0">
+                <span id="copyNotesIcon"></span>
+                <span>Copy Notes</span>
               </button>
-              <button type="button" data-rte-cmd="insertOrderedList" title="Numbered List" class="rte-btn">
-                <span id="rteNumberIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
-              </button>
-              <button id="rteChecklistBtn" type="button" title="Insert Interactive Checklist" class="rte-btn">
-                <span id="rteChecklistIcon" class="w-3.5 h-3.5 flex items-center justify-center text-sky-300"></span>
-                <span class="hidden sm:inline text-[11px] font-medium">Checklist</span>
-              </button>
-
-              <span class="rte-divider" aria-hidden="true"></span>
-
-              <!-- Clear Formatting -->
-              <button id="rteClearFormatBtn" type="button" title="Clear Formatting" class="rte-btn text-white/55 hover:text-rose-300">
-                <span id="rteClearIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+              <button
+                id="toggleNotesBtn"
+                type="button"
+                aria-expanded="true"
+                title="Hide Personal Trip Notes & Quick Reminders"
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/10 text-white/90 transition-all cursor-pointer shrink-0"
+              >
+                <span id="toggleNotesLabel">Hide</span>
+                <span id="toggleNotesChevron" class="transition-transform duration-300 rotate-180"></span>
               </button>
             </div>
-
-            <!-- Rich-Text Editable Canvas -->
-            <div
-              id="notesEditor"
-              contenteditable="true"
-              spellcheck="true"
-              role="textbox"
-              aria-multiline="true"
-              aria-label="Personal Trip Notes and Quick Reminders"
-              data-placeholder="Gate codes, Wi-Fi passwords, emergency contacts, special dietary requests, packing checklists..."
-              class="rte-editor"
-            ></div>
           </div>
 
-          <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
-            <span id="notesMeta">0 characters</span>
-            <span id="syncStatusText" class="inline-flex items-center gap-1.5 text-sky-300/80">
-              <span id="syncStatusDot" class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
-              <span>Connecting save...</span>
-            </span>
+          <!-- Collapsible Rich-Text Editor & Status Footer -->
+          <div id="notesBodyWrap" class="space-y-3">
+            <!-- Notion / Word-Style Rich-Text Editor Shell -->
+            <div class="rte-shell">
+              <div id="notesToolbar" class="rte-toolbar" role="toolbar" aria-label="Text formatting toolbar">
+                <!-- Font Family -->
+                <select id="rteFontFamily" title="Font Family" aria-label="Font Family" class="rte-select">
+                  <option value="Inter, ui-sans-serif, system-ui, sans-serif" class="bg-slate-900">Sans (Inter)</option>
+                  <option value="Georgia, 'Times New Roman', serif" class="bg-slate-900">Serif (Georgia)</option>
+                  <option value="'Trebuchet MS', 'Segoe UI', sans-serif" class="bg-slate-900">Rounded</option>
+                  <option value="ui-monospace, SFMono-Regular, Menlo, monospace" class="bg-slate-900">Monospace</option>
+                </select>
+
+                <!-- Font Size -->
+                <select id="rteFontSize" title="Font Size" aria-label="Font Size" class="rte-select">
+                  <option value="12px" class="bg-slate-900">12 px</option>
+                  <option value="14px" class="bg-slate-900" selected>14 px</option>
+                  <option value="16px" class="bg-slate-900">16 px</option>
+                  <option value="18px" class="bg-slate-900">18 px</option>
+                  <option value="20px" class="bg-slate-900">20 px</option>
+                  <option value="24px" class="bg-slate-900">24 px</option>
+                </select>
+
+                <span class="rte-divider" aria-hidden="true"></span>
+
+                <!-- Text Emphasis -->
+                <button type="button" data-rte-cmd="bold" title="Bold (Ctrl+B)" class="rte-btn font-extrabold">B</button>
+                <button type="button" data-rte-cmd="italic" title="Italic (Ctrl+I)" class="rte-btn italic font-serif">I</button>
+                <button type="button" data-rte-cmd="underline" title="Underline (Ctrl+U)" class="rte-btn underline">U</button>
+                <button type="button" data-rte-cmd="strikeThrough" title="Strikethrough" class="rte-btn line-through">S</button>
+
+                <span class="rte-divider" aria-hidden="true"></span>
+
+                <!-- Text Color Picker Popover -->
+                <div class="relative">
+                  <button id="rteTextColorBtn" type="button" title="Text Color" class="rte-btn flex-col leading-none py-0.5">
+                    <span class="text-[11px] font-bold">A</span>
+                    <span id="rteTextColorBar" class="rte-color-indicator bg-sky-300"></span>
+                  </button>
+                  <div id="rteTextColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Text Color</div>
+                    <div id="rteTextColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
+                    <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                      <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
+                        <span>Custom</span>
+                        <input id="rteTextColorCustom" type="color" value="#7dd3fc" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
+                      </label>
+                      <button type="button" data-rte-reset-text-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">Reset</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Background Highlight Color Picker Popover -->
+                <div class="relative">
+                  <button id="rteBgColorBtn" type="button" title="Highlight Color" class="rte-btn flex-col leading-none py-0.5">
+                    <span id="rteHighlightIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+                    <span id="rteBgColorBar" class="rte-color-indicator bg-amber-400"></span>
+                  </button>
+                  <div id="rteBgColorPopover" class="rte-popover hidden space-y-2 animate-slideDown">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-white/55">Highlight Color</div>
+                    <div id="rteBgColorSwatches" class="grid grid-cols-6 gap-1.5"></div>
+                    <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                      <label class="inline-flex items-center gap-1.5 text-[11px] text-white/70 cursor-pointer">
+                        <span>Custom</span>
+                        <input id="rteBgColorCustom" type="color" value="#f59e0b" class="w-5 h-5 rounded border border-white/20 bg-transparent cursor-pointer" />
+                      </label>
+                      <button type="button" data-rte-reset-bg-color="1" class="text-[10px] font-semibold text-white/60 hover:text-white cursor-pointer">None</button>
+                    </div>
+                  </div>
+                </div>
+
+                <span class="rte-divider" aria-hidden="true"></span>
+
+                <!-- Lists & Interactive Checklist -->
+                <button type="button" data-rte-cmd="insertUnorderedList" title="Bulleted List" class="rte-btn">
+                  <span id="rteBulletIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+                </button>
+                <button type="button" data-rte-cmd="insertOrderedList" title="Numbered List" class="rte-btn">
+                  <span id="rteNumberIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+                </button>
+                <button id="rteChecklistBtn" type="button" title="Insert Interactive Checklist" class="rte-btn">
+                  <span id="rteChecklistIcon" class="w-3.5 h-3.5 flex items-center justify-center text-sky-300"></span>
+                  <span class="hidden sm:inline text-[11px] font-medium">Checklist</span>
+                </button>
+
+                <span class="rte-divider" aria-hidden="true"></span>
+
+                <!-- Clear Formatting -->
+                <button id="rteClearFormatBtn" type="button" title="Clear Formatting" class="rte-btn text-white/55 hover:text-rose-300">
+                  <span id="rteClearIcon" class="w-3.5 h-3.5 flex items-center justify-center"></span>
+                </button>
+              </div>
+
+              <!-- Rich-Text Editable Canvas -->
+              <div
+                id="notesEditor"
+                contenteditable="true"
+                spellcheck="true"
+                role="textbox"
+                aria-multiline="true"
+                aria-label="Personal Trip Notes and Quick Reminders"
+                data-placeholder="Gate codes, Wi-Fi passwords, emergency contacts, special dietary requests, packing checklists..."
+                class="rte-editor"
+              ></div>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/45">
+              <span id="notesMeta">0 characters</span>
+              <span id="syncStatusText" class="inline-flex items-center gap-1.5 text-sky-300/80">
+                <span id="syncStatusDot" class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+                <span>Connecting save...</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Secondary Controls Row: Checklist (6 cols) + Budget Estimator (6 cols) -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <!-- Secondary Controls Row: Equal-Height Checklist (6 cols) + Budget Estimator (6 cols) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
 
         <!-- Module 1: Trip Readiness Checklist (6 cols) -->
-        <div class="lg:col-span-6 rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/40 hover:border-white/20 transition-all duration-300 min-w-0">
-          <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+        <div class="lg:col-span-6 rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/40 hover:border-white/20 transition-all duration-300 min-w-0 flex flex-col lg:h-[650px]">
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-3 shrink-0">
             <div>
               <div class="text-[10px] font-bold uppercase tracking-widest text-sky-400">Readiness</div>
               <h3 class="text-lg font-semibold text-white mt-0.5">Trip Checklist</h3>
@@ -555,18 +583,18 @@
           </div>
 
           <!-- Shimmering Glass Progress Bar -->
-          <div class="relative h-2 w-full rounded-full bg-white/10 overflow-hidden mb-5">
+          <div class="relative h-2 w-full rounded-full bg-white/10 overflow-hidden mb-5 shrink-0">
             <div id="progressBar" class="relative h-full rounded-full bg-gradient-to-r from-orange-400 via-amber-300 to-sky-400 transition-all duration-500 ease-out" style="width: 0%;">
               <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent animate-shimmer"></div>
             </div>
           </div>
 
-          <div id="checklistContainer" class="space-y-5 max-h-[430px] overflow-y-auto pr-1 overscroll-contain"></div>
+          <div id="checklistContainer" class="space-y-5 flex-1 min-h-0 max-h-[460px] lg:max-h-none overflow-y-auto pr-1 overscroll-contain"></div>
         </div>
 
         <!-- Module 2: Budget Estimator (6 cols) -->
-        <div class="lg:col-span-6 rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/40 hover:border-white/20 transition-all duration-300 min-w-0">
-          <div class="flex items-start justify-between gap-2 mb-4">
+        <div class="lg:col-span-6 rounded-3xl bg-[#16171d]/75 backdrop-blur-2xl border border-white/12 p-4 sm:p-6 shadow-2xl shadow-black/40 hover:border-white/20 transition-all duration-300 min-w-0 flex flex-col lg:h-[650px]">
+          <div class="flex items-start justify-between gap-2 mb-4 shrink-0">
             <div>
               <div class="text-[10px] font-bold uppercase tracking-widest text-sky-400">Utilities · Finance</div>
               <h3 class="text-lg font-semibold text-white mt-0.5">Budget Estimator</h3>
@@ -577,10 +605,10 @@
           </div>
 
           <!-- Traveler Steppers -->
-          <div id="travelersContainer" class="grid grid-cols-3 gap-2 mb-4"></div>
+          <div id="travelersContainer" class="grid grid-cols-3 gap-2 mb-4 shrink-0"></div>
 
           <!-- Desktop Column Labels (Hidden on small phones where inputs stack into 2 columns) -->
-          <div class="hidden sm:flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-white/45 px-1 pb-2 border-b border-white/10 mb-2.5">
+          <div class="hidden sm:flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-white/45 px-1 pb-2 border-b border-white/10 mb-2.5 shrink-0">
             <span>Expense &amp; Details</span>
             <div class="flex items-center gap-2 pr-1">
               <span class="w-[74px] text-right">Estimated</span>
@@ -589,10 +617,10 @@
           </div>
 
           <!-- Cost Line Items -->
-          <div id="budgetRowsContainer" class="space-y-2.5 mb-4 max-h-[340px] sm:max-h-[300px] overflow-y-auto pr-0.5 overscroll-contain"></div>
+          <div id="budgetRowsContainer" class="space-y-2.5 mb-4 flex-1 min-h-0 max-h-[360px] lg:max-h-none overflow-y-auto pr-0.5 overscroll-contain"></div>
 
           <!-- Summary Glass Card: Estimated Total vs Final Cost -->
-          <div class="rounded-2xl bg-black/35 border border-white/10 p-4 space-y-2.5">
+          <div class="mt-auto shrink-0 rounded-2xl bg-black/35 border border-white/10 p-4 space-y-2.5">
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs sm:text-sm font-medium text-white/75">Estimated Total</span>
               <span id="estimatedTotal" class="text-base sm:text-lg font-bold text-white tabular-nums">$920.00</span>

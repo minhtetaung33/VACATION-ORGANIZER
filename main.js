@@ -4,6 +4,8 @@ import {
   renderStaticIcons,
   updateClock,
   setWeatherPanelExpanded,
+  setBookiPanelExpanded,
+  setNotesPanelExpanded,
   refreshWeatherDayNightAuto,
   syncLiveWeatherForActiveDay,
   setActiveCarouselIndex,
@@ -148,12 +150,34 @@ function bindGlobalEvents() {
     renderItinerary();
   });
 
-  // Booki Controls
+  // Booki Controls (Hide/Show Icon, Auto-Expand on Add Booking or Status Pill Click)
+  document.getElementById('toggleBookiBtn')?.addEventListener('click', () => {
+    setBookiPanelExpanded(!appStore.bookiPanelExpanded);
+  });
+
+  document.getElementById('vaultStatusSummary')?.addEventListener(
+    'click',
+    (e) => {
+      if (e.target.closest('[data-vault-quick-status]') && !appStore.bookiPanelExpanded) {
+        setBookiPanelExpanded(true);
+      }
+    },
+    true
+  );
+
   document.getElementById('addReservationBtn')?.addEventListener('click', () => {
+    if (!appStore.bookiPanelExpanded) {
+      setBookiPanelExpanded(true);
+    }
     const preselectedType = appStore.vaultTypeFilter && appStore.vaultTypeFilter !== 'all'
       ? appStore.vaultTypeFilter
       : null;
     openReservationModal(null, preselectedType);
+  });
+
+  // Personal Trip Notes & Quick Reminders Hide/Show Toggle
+  document.getElementById('toggleNotesBtn')?.addEventListener('click', () => {
+    setNotesPanelExpanded(!appStore.notesPanelExpanded);
   });
 
   document.getElementById('addBudgetRowBtn')?.addEventListener('click', () => openBudgetModal(null));
@@ -262,6 +286,8 @@ function bindGlobalEvents() {
  */
 bindMobileViewportGuards();
 renderStaticIcons();
+setBookiPanelExpanded(appStore.bookiPanelExpanded);
+setNotesPanelExpanded(appStore.notesPanelExpanded);
 updateClock();
 setInterval(updateClock, 1000);
 bindGlobalEvents();

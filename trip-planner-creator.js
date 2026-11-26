@@ -987,6 +987,42 @@ export function cycleReservationStatus(reservationId) {
 }
 
 /**
+ * Drag-and-Drop Reorder for Booki Cards (Works Globally & Under Active Filters)
+ */
+let reservationMoveTimer = null;
+export function handleDragReorderReservation(draggedId, targetId, dropAfter = false) {
+  const list = appStore.state.reservations;
+  if (!Array.isArray(list) || !draggedId || !targetId || draggedId === targetId) return;
+
+  const fromIdx = list.findIndex((r) => r.id === draggedId);
+  if (fromIdx < 0) return;
+
+  const [moved] = list.splice(fromIdx, 1);
+  const targetIdx = list.findIndex((r) => r.id === targetId);
+  if (targetIdx < 0) {
+    list.splice(fromIdx, 0, moved);
+    return;
+  }
+
+  const insertIdx = dropAfter ? targetIdx + 1 : targetIdx;
+  list.splice(insertIdx, 0, moved);
+
+  if (insertIdx === fromIdx) return;
+
+  appStore.justMovedReservationId = draggedId;
+  clearTimeout(reservationMoveTimer);
+  reservationMoveTimer = setTimeout(() => {
+    if (appStore.justMovedReservationId === draggedId) {
+      appStore.justMovedReservationId = null;
+    }
+  }, 900);
+
+  renderReservations();
+  scheduleCloudSave();
+  showToast('Booking order updated');
+}
+
+/**
  * Delete Booking Confirmation
  */
 export function deleteReservation(reservationId) {
@@ -1063,6 +1099,91 @@ export function openChecklistCategoryModal(groupId = null) {
     const inputEl = document.getElementById('catTitleInput');
     if (inputEl) inputEl.focus();
   }, 100);
+}
+
+/**
+ * Edit an Individual Checklist Item (Text, Category & Completion Status)
+ */
+export function openChecklistItemModal(groupId, itemId) {
+  const state = appStore.state;
+  const group = state.checklists.find((g) => g.id === groupId);
+  const item = group?.items.find((i) => i.id === itemId);
+  if (!group || !item) return;
+
+  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
+  const categoryOptionsHtml = state.checklists
+    .map((g) => `<option value="${esc(g.id)}" class="bg-slate-900" ${g.id === group.id ? 'selected' : ''}>${esc(g.title)}</option>`)
+    .join('');
+
+  const saveChecklistItem = () => {
+    const nextText = document.getElementById('chkItemText')?.value.trim() || '';
+    if (!nextText) return showToast('Please enter checklist item text', 'error');
+
+    const nextGroupId = document.getElementById('chkItemGroup')?.value || group.id;
+    const nextDone = Boolean(document.getElementById('chkItemDone')?.checked);
+
+    item.text = nextText;
+    item.done = nextDone;
+
+    if (nextGroupId !== group.id) {
+      const targetGroup = state.checklists.find((g) => g.id === nextGroupId);
+      if (targetGroup) {
+        group.items = group.items.filter((i) => i.id !== item.id);
+        targetGroup.items.push(item);
+      }
+    }
+
+    closeModal();
+    renderChecklist();
+    scheduleCloudSave();
+    showToast('Checklist item updated');
+  };
+
+  openModal({
+    title: 'Edit Checklist Item',
+    bodyHtml: `
+      <div class="space-y-3.5">
+        <div>
+          <label for="chkItemText" class="block text-xs font-semibold text-white/60 mb-1">Checklist Item</label>
+          <input id="chkItemText" type="text" placeholder="e.g. Bring phone chargers / power bank" class="${inp}" value="${esc(item.text)}" />
+        </div>
+
+        ${state.checklists.length > 1 ? `
+          <div>
+            <label for="chkItemGroup" class="block text-xs font-semibold text-white/60 mb-1">Checklist Category</label>
+            <select id="chkItemGroup" class="${inp}">${categoryOptionsHtml}</select>
+          </div>
+        ` : ''}
+
+        <label class="flex items-center gap-2.5 cursor-pointer select-none pt-0.5">
+          <input id="chkItemDone" type="checkbox" ${item.done ? 'checked' : ''} class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+          <span class="text-xs font-medium text-white/80">Mark this item as completed</span>
+        </label>
+      </div>
+    `,
+    footerButtons: [
+      { label: 'Cancel', onClick: closeModal },
+      {
+        label: 'Save Item',
+        variant: 'primary',
+        onClick: saveChecklistItem
+      }
+    ]
+  });
+
+  setTimeout(() => {
+    const textInp = document.getElementById('chkItemText');
+    if (textInp) {
+      textInp.focus();
+      textInp.select();
+      textInp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveChecklistItem();
+        }
+      });
+    }
+  }, 90);
 }
 
 /**

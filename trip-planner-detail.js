@@ -56,9 +56,11 @@ export const detailHooks = {
   deleteEvent: () => {},
   moveEvent: () => {},
   openChecklistCategoryModal: () => {},
+  openChecklistItemModal: () => {},
   openBudgetModal: () => {},
   openReservationModal: () => {},
   cycleReservationStatus: () => {},
+  handleDragReorderReservation: () => {},
   deleteReservation: () => {},
   handleDragReorderEvent: () => {},
   handleDragMoveToTimeSlot: () => {},
@@ -77,13 +79,20 @@ export function registerDetailHooks(overrides = {}) {
 }
 
 /**
- * Active Drag State for Timeline Cards
+ * Active Drag State for Timeline Cards & Booki Reservation Cards
  */
 let activeDragPayload = null;
+let activeReservationDragId = null;
 
 function clearAllDragVisuals() {
-  document.querySelectorAll('.is-dragging, .is-drop-before, .is-drop-after, .is-drag-over').forEach((el) => {
+  document.querySelectorAll('[data-drag-card], [data-day-article]').forEach((el) => {
     el.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after', 'is-drag-over');
+  });
+}
+
+function clearReservationDragVisuals() {
+  document.querySelectorAll('[data-drag-res]').forEach((el) => {
+    el.classList.remove('is-dragging', 'is-drop-before', 'is-drop-after');
   });
 }
 
@@ -635,7 +644,7 @@ export function renderItinerary() {
 
 /**
  * ============================================================================
- * BOOKI (BOOKINGS, RESERVATIONS & CONFIRMATIONS) RENDERER
+ * BOOKI (BOOKINGS, RESERVATIONS & CONFIRMATIONS) RENDERER WITH DRAG & DROP
  * ============================================================================
  */
 export function renderReservations() {
@@ -780,7 +789,7 @@ export function renderReservations() {
     });
   }
 
-  // 4. Filter & Render Booking Cards
+  // 4. Filter & Render Draggable Booking Cards
   const filtered = list.filter((item) => {
     const matchType = appStore.vaultTypeFilter === 'all' || item.type === appStore.vaultTypeFilter;
     const matchStatus = appStore.vaultStatusFilter === 'all' || item.status === appStore.vaultStatusFilter;
@@ -842,6 +851,7 @@ export function renderReservations() {
     const typeMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
     const statusMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
     const isCancelled = res.status === 'cancelled';
+    const isJustMoved = appStore.justMovedReservationId === res.id;
     const mapUrl = res.location ? getStopMapUrl(res.location) : '';
     const displayStart = formatBookingDateTime(res.startDate, res.startTime, res.checkIn);
     const displayEnd = formatBookingDateTime(res.endDate, res.endTime, res.checkOut);
@@ -850,16 +860,22 @@ export function renderReservations() {
 
     return `
       <article
-        class="reservation-card ${statusMeta.cardClass} group/res rounded-2xl border p-4 flex flex-col justify-between gap-3 animate-fadeUp"
-        style="animation-delay: ${Math.min(idx * 45, 220)}ms;"
+        draggable="true"
+        data-drag-res="1"
+        data-res-id="${esc(res.id)}"
+        class="reservation-card ${statusMeta.cardClass} group/res rounded-2xl border p-4 flex flex-col justify-between gap-3 ${isJustMoved ? 'just-moved' : 'animate-fadeUp'}"
+        ${isJustMoved ? '' : `style="animation-delay: ${Math.min(idx * 45, 220)}ms;"`}
       >
         <!-- Top Category Accent Line -->
         <div class="reservation-card-accent ${typeMeta.accent}"></div>
 
         <div class="space-y-3">
-          <!-- Card Header: Icon, Category, Title & Interactive Status Pill -->
-          <div class="flex items-start justify-between gap-2.5">
-            <div class="flex items-start gap-2.5 min-w-0 flex-1">
+          <!-- Card Header: Drag Grip, Icon, Category, Title & Interactive Status Pill -->
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex items-start gap-2 min-w-0 flex-1">
+              <span title="Drag to rearrange Booki cards" class="drag-handle p-1 -ml-1.5 mt-1 rounded-lg text-white/30 hover:text-sky-300 hover:bg-white/10 transition-colors shrink-0">
+                ${ICONS.grip}
+              </span>
               <span title="${esc(typeMeta.label)}" class="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 shadow-md ${typeMeta.style}">
                 ${ICONS[typeMeta.icon]}
               </span>
@@ -983,6 +999,70 @@ export function renderReservations() {
 
   container.querySelectorAll('[data-del-res]').forEach((btn) => {
     btn.addEventListener('click', () => detailHooks.deleteReservation(btn.dataset.delRes));
+  });
+
+  // Bind Drag & Drop Reordering Across Booki Cards
+  container.querySelectorAll('[data-drag-res]').forEach((card) => {
+    card.addEventListener('dragstart', (e) => {
+      if (e.target.closest('button, a, input, select, textarea')) {
+        e.preventDefault();
+        return;
+      }
+      activeReservationDragId = card.dataset.resId;
+      e.dataTransfer.effectAllowed = 'move';
+      try {
+        e.dataTransfer.setData('text/plain', activeReservationDragId);
+      } catch (err) {
+        // Ignore dataTransfer restriction
+      }
+      card.classList.add('is-dragging');
+    });
+
+    card.addEventListener('dragend', () => {
+      activeReservationDragId = null;
+      clearReservationDragVisuals();
+    });
+
+    card.addEventListener('dragover', (e) => {
+      if (!activeReservationDragId || activeReservationDragId === card.dataset.resId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      const rect = card.getBoundingClientRect();
+      const isMultiCol = window.innerWidth >= 768;
+      const dropAfter = isMultiCol
+        ? e.clientX > rect.left + rect.width / 2
+        : e.clientY > rect.top + rect.height / 2;
+
+      card.classList.toggle('is-drop-after', dropAfter);
+      card.classList.toggle('is-drop-before', !dropAfter);
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      if (!card.contains(e.relatedTarget)) {
+        card.classList.remove('is-drop-before', 'is-drop-after');
+      }
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!activeReservationDragId) return;
+
+      const draggedId = activeReservationDragId;
+      const targetId = card.dataset.resId;
+      const rect = card.getBoundingClientRect();
+      const isMultiCol = window.innerWidth >= 768;
+      const dropAfter = isMultiCol
+        ? e.clientX > rect.left + rect.width / 2
+        : e.clientY > rect.top + rect.height / 2;
+
+      activeReservationDragId = null;
+      clearReservationDragVisuals();
+
+      if (draggedId === targetId) return;
+      detailHooks.handleDragReorderReservation(draggedId, targetId, dropAfter);
+    });
   });
 }
 
@@ -1557,7 +1637,7 @@ export function renderNotes() {
 }
 
 /**
- * Render Trip Readiness Checklist
+ * Render Trip Readiness Checklist (With Item Edit & Delete Icons)
  */
 export function renderChecklist() {
   const state = appStore.state;
@@ -1595,7 +1675,10 @@ export function renderChecklist() {
             <span data-check-group="${esc(group.id)}" data-check-id="${esc(item.id)}" class="flex-1 min-w-0 break-words text-xs sm:text-sm leading-snug cursor-pointer select-none transition-colors ${
               item.done ? 'line-through text-white/35' : 'text-white/85'
             }">${esc(item.text)}</span>
-            <button type="button" data-del-check-group="${esc(group.id)}" data-del-check-id="${esc(item.id)}" title="Remove item" class="p-1 rounded-lg text-white/40 hover:text-rose-300 hover:bg-rose-500/15 transition-opacity cursor-pointer shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">${ICONS.trash}</button>
+            <div class="flex items-center gap-0.5 shrink-0 transition-opacity opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+              <button type="button" data-edit-check-group="${esc(group.id)}" data-edit-check-id="${esc(item.id)}" title="Edit item" class="p-1 rounded-lg text-white/45 hover:text-sky-300 hover:bg-sky-400/15 transition-colors cursor-pointer">${ICONS.edit}</button>
+              <button type="button" data-del-check-group="${esc(group.id)}" data-del-check-id="${esc(item.id)}" title="Remove item" class="p-1 rounded-lg text-white/40 hover:text-rose-300 hover:bg-rose-500/15 transition-colors cursor-pointer">${ICONS.trash}</button>
+            </div>
           </div>
         `).join('')}
       </div>
@@ -1641,8 +1724,16 @@ export function renderChecklist() {
     });
   });
 
+  container.querySelectorAll('[data-edit-check-id]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      detailHooks.openChecklistItemModal(btn.dataset.editCheckGroup, btn.dataset.editCheckId);
+    });
+  });
+
   container.querySelectorAll('[data-del-check-id]').forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       const group = state.checklists.find((g) => g.id === btn.dataset.delCheckGroup);
       const item = group?.items.find((i) => i.id === btn.dataset.delCheckId);
       if (!group || !item) return;

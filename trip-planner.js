@@ -22,6 +22,7 @@ export const ICONS = {
   info: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><polyline points="20 6 9 17 4 12"/></svg>`,
   link: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`,
+  hash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>`,
   sun: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
   cloud: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>`,
   rain: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M8 19v2"/><path d="M12 19v2"/><path d="M16 19v2"/></svg>`,
@@ -74,6 +75,127 @@ export const LINK_ICON_META = {
   garden: { label: 'Zoo & Nature', icon: 'leaf', style: 'bg-gradient-to-br from-emerald-500/25 to-teal-500/20 border-emerald-400/40 text-emerald-300 shadow-emerald-500/15' },
   hotel: { label: 'Hotel & Stays', icon: 'hotel', style: 'bg-gradient-to-br from-blue-500/25 to-indigo-500/20 border-blue-400/40 text-blue-300 shadow-blue-500/15' },
   web: { label: 'General Website', icon: 'globe', style: 'bg-gradient-to-br from-white/15 to-sky-500/15 border-white/25 text-white/90 shadow-black/20' }
+};
+
+/**
+ * Reservations & Bookings Vault Categories (Dynamic Labels & Color Themes)
+ */
+export const RESERVATION_TYPE_META = {
+  hotel: {
+    label: 'Hotel / Airbnb',
+    shortLabel: 'Hotels',
+    icon: 'hotel',
+    style: 'bg-gradient-to-br from-indigo-500/25 to-blue-500/20 border-indigo-400/40 text-indigo-300 shadow-indigo-500/15',
+    accent: 'bg-gradient-to-r from-indigo-400 via-sky-400 to-transparent',
+    rgb: [129, 140, 248],
+    titlePlaceholder: 'e.g. The Mission Inn Hotel & Spa · Palm Desert Airbnb',
+    providerPlaceholder: 'e.g. Booking.com · Marriott · Airbnb Host',
+    locationPlaceholder: 'e.g. 3649 Mission Inn Ave, Riverside, CA',
+    startLabel: 'Check-In',
+    endLabel: 'Check-Out',
+    startPlaceholder: 'e.g. Fri, Nov 27 · 3:00 PM',
+    endPlaceholder: 'e.g. Sat, Nov 28 · 11:00 AM',
+    codePlaceholder: 'e.g. HTL-849201',
+    notePlaceholder: 'e.g. Early check-in requested, door code #4821, parking pass...'
+  },
+  flight: {
+    label: 'Flight',
+    shortLabel: 'Flights',
+    icon: 'plane',
+    style: 'bg-gradient-to-br from-sky-500/25 to-cyan-500/20 border-sky-400/40 text-sky-300 shadow-sky-500/15',
+    accent: 'bg-gradient-to-r from-sky-400 via-cyan-300 to-transparent',
+    rgb: [56, 189, 248],
+    titlePlaceholder: 'e.g. LAX → PSP · Delta DL 1422',
+    providerPlaceholder: 'e.g. Delta Air Lines · Terminal 3 · Seats 12A/12B',
+    locationPlaceholder: 'e.g. Los Angeles (LAX) → Palm Springs (PSP)',
+    startLabel: 'Departure',
+    endLabel: 'Arrival',
+    startPlaceholder: 'e.g. Fri, Nov 27 · 10:15 AM',
+    endPlaceholder: 'e.g. Fri, Nov 27 · 11:40 AM',
+    codePlaceholder: 'e.g. PNR-X7K9M2',
+    notePlaceholder: 'e.g. Boarding Group 2, 1 carry-on + stroller gate check...'
+  },
+  car: {
+    label: 'Rental Car',
+    shortLabel: 'Rental Car',
+    icon: 'drive',
+    style: 'bg-gradient-to-br from-emerald-500/25 to-teal-500/20 border-emerald-400/40 text-emerald-300 shadow-emerald-500/15',
+    accent: 'bg-gradient-to-r from-emerald-400 via-teal-300 to-transparent',
+    rgb: [52, 211, 153],
+    titlePlaceholder: 'e.g. Midsize SUV · Enterprise',
+    providerPlaceholder: 'e.g. Enterprise · Hertz · Turo',
+    locationPlaceholder: 'e.g. PSP Airport Rental Center',
+    startLabel: 'Pick-Up',
+    endLabel: 'Drop-Off',
+    startPlaceholder: 'e.g. Fri, Nov 27 · 12:00 PM',
+    endPlaceholder: 'e.g. Mon, Nov 30 · 6:00 PM',
+    codePlaceholder: 'e.g. CAR-559012',
+    notePlaceholder: 'e.g. Full-to-full fuel policy, car seat requested, Skip the Counter...'
+  },
+  restaurant: {
+    label: 'Restaurant',
+    shortLabel: 'Dining',
+    icon: 'food',
+    style: 'bg-gradient-to-br from-amber-500/25 to-orange-500/20 border-amber-400/40 text-amber-300 shadow-amber-500/15',
+    accent: 'bg-gradient-to-r from-amber-400 via-orange-400 to-transparent',
+    rgb: [251, 191, 36],
+    titlePlaceholder: 'e.g. Peaks Restaurant · Sunset Dinner',
+    providerPlaceholder: 'e.g. OpenTable · Party of 3 (2 Adults, 1 Infant)',
+    locationPlaceholder: 'e.g. Mountain Station, Palm Springs, CA',
+    startLabel: 'Reservation',
+    endLabel: 'Window / End',
+    startPlaceholder: 'e.g. Sun, Nov 29 · 5:15 PM',
+    endPlaceholder: 'e.g. 6:45 PM (Optional)',
+    codePlaceholder: 'e.g. OT-39284',
+    notePlaceholder: 'e.g. Window table requested, high chair needed, 15-min grace period...'
+  },
+  ticket: {
+    label: 'Attraction & Tickets',
+    shortLabel: 'Tickets',
+    icon: 'ticket',
+    style: 'bg-gradient-to-br from-rose-500/25 to-fuchsia-500/20 border-rose-400/40 text-rose-300 shadow-rose-500/15',
+    accent: 'bg-gradient-to-r from-rose-400 via-fuchsia-400 to-transparent',
+    rgb: [251, 113, 133],
+    titlePlaceholder: 'e.g. WildLights Day + Night Bundle · Tramway',
+    providerPlaceholder: 'e.g. Official Site · 2 Adults, 1 Infant (Free)',
+    locationPlaceholder: 'e.g. The Living Desert Zoo, Palm Desert, CA',
+    startLabel: 'Entry / Start',
+    endLabel: 'Exit / Ends',
+    startPlaceholder: 'e.g. Sat, Nov 28 · 1:30 PM',
+    endPlaceholder: 'e.g. WildLights 6:00–9:00 PM',
+    codePlaceholder: 'e.g. TKT-904821',
+    notePlaceholder: 'e.g. Mobile QR code saved in Apple Wallet, arrive 15 mins early...'
+  }
+};
+
+/**
+ * Reservation Status Themes & One-Click Cycle Map
+ */
+export const RESERVATION_STATUS_META = {
+  confirmed: {
+    label: 'Confirmed',
+    next: 'pending',
+    cardClass: 'reservation-card--confirmed',
+    badgeClass: 'bg-emerald-500/18 border-emerald-400/45 text-emerald-200',
+    dotClass: 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]',
+    rgb: [52, 211, 153]
+  },
+  pending: {
+    label: 'Pending',
+    next: 'cancelled',
+    cardClass: 'reservation-card--pending',
+    badgeClass: 'bg-amber-500/18 border-amber-400/45 text-amber-200',
+    dotClass: 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.85)]',
+    rgb: [251, 191, 36]
+  },
+  cancelled: {
+    label: 'Cancelled',
+    next: 'confirmed',
+    cardClass: 'reservation-card--cancelled',
+    badgeClass: 'bg-rose-500/18 border-rose-400/45 text-rose-200',
+    dotClass: 'bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.85)]',
+    rgb: [251, 113, 133]
+  }
 };
 
 export const CATEGORY_META = {
@@ -306,7 +428,7 @@ export function registerPlannerHooks(overrides = {}) {
 }
 
 /**
- * Utilities: ID generator, HTML Escaping, Coordinate Normalization, Category, Budget & Maps Helpers
+ * Utilities: ID generator, HTML Escaping, Coordinate Normalization, Category, Budget, Reservations & Maps Helpers
  */
 export function uid(prefix = 'id') {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -328,6 +450,24 @@ export function normalizeLocationCoords(coords) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
   return { lat, lng };
+}
+
+export function normalizeReservationItem(raw) {
+  const type = RESERVATION_TYPE_META[raw?.type] ? raw.type : 'hotel';
+  const status = RESERVATION_STATUS_META[raw?.status] ? raw.status : 'pending';
+  return {
+    id: raw?.id || uid('res'),
+    type,
+    status,
+    title: String(raw?.title || '').trim(),
+    provider: String(raw?.provider || '').trim(),
+    location: String(raw?.location || '').trim(),
+    checkIn: String(raw?.checkIn || '').trim(),
+    checkOut: String(raw?.checkOut || '').trim(),
+    confirmationNumber: String(raw?.confirmationNumber || '').trim(),
+    bookingUrl: String(raw?.bookingUrl || '').trim(),
+    notes: String(raw?.notes || '').trim()
+  };
 }
 
 export function getAllCategories() {
@@ -502,7 +642,7 @@ export function openConfirmDeleteModal({
 }
 
 /**
- * Initial Thanksgiving Getaway Planner State (With Verified Location Coords & Time Slots)
+ * Initial Thanksgiving Getaway Planner State (With Verified Location Coords, Time Slots & Starter Reservations)
  */
 export function createInitialState() {
   const trip = {
@@ -685,6 +825,73 @@ export function createInitialState() {
         { id: 'cost-4', category: 'tickets', label: 'Tickets / activities', estimated: 100, final: null, finalEntries: [], note: 'Zoo, Tramway, Air Museum, 123 Farm' }
       ]
     },
+    reservations: [
+      {
+        id: 'res-1',
+        type: 'hotel',
+        status: 'pending',
+        title: 'Riverside Hotel (1 Night)',
+        provider: 'Near Mission Inn',
+        location: 'Downtown Riverside, CA',
+        checkIn: 'Fri, Nov 27 · 5:30 PM',
+        checkOut: 'Sat, Nov 28 · 10:30 AM',
+        confirmationNumber: '',
+        bookingUrl: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/',
+        notes: 'Reserve advance parking if possible; request quiet room near Festival of Lights.'
+      },
+      {
+        id: 'res-2',
+        type: 'hotel',
+        status: 'pending',
+        title: 'Palm Desert Hotel (2 Nights)',
+        provider: 'Close to The Living Desert',
+        location: 'Palm Desert, CA',
+        checkIn: 'Sat, Nov 28 · 3:00 PM',
+        checkOut: 'Mon, Nov 30 · 10:30 AM',
+        confirmationNumber: '',
+        bookingUrl: '',
+        notes: 'Ask about early check-in or luggage storage on Saturday around 12:15 PM.'
+      },
+      {
+        id: 'res-3',
+        type: 'ticket',
+        status: 'pending',
+        title: 'WildLights Day + Night Bundle',
+        provider: 'The Living Desert · 2 Adults, 1 Infant',
+        location: 'The Living Desert Zoo, Palm Desert, CA',
+        checkIn: 'Sat, Nov 28 · 1:30 PM',
+        checkOut: 'WildLights 6:00–9:00 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://www.livingdesert.org/events/wildlights-2026/2026-11-28/',
+        notes: 'Daytime guests exit by 5:00 PM; WildLights last admission is 8:30 PM.'
+      },
+      {
+        id: 'res-4',
+        type: 'restaurant',
+        status: 'pending',
+        title: 'Peaks Restaurant · Sunset Dinner',
+        provider: 'Mountain Station · Party of 3',
+        location: 'Palm Springs Aerial Tramway, CA',
+        checkIn: 'Sun, Nov 29 · 5:15 PM',
+        checkOut: '6:45 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://pstramway.com/dining/',
+        notes: 'Reserve table early for sunset seating; bring warm jackets (8,516 ft elevation).'
+      },
+      {
+        id: 'res-5',
+        type: 'ticket',
+        status: 'pending',
+        title: '123 Farm Christmas Nights',
+        provider: 'Weekday Admission · 5–10 PM',
+        location: '123 Farm, Cherry Valley, CA',
+        checkIn: 'Mon, Nov 30 · 5:00 PM',
+        checkOut: '7:30 PM',
+        confirmationNumber: '',
+        bookingUrl: 'https://ticket.123farm.com/xmas',
+        notes: 'Purchase date-specific tickets online ahead; gate tickets may not be available.'
+      }
+    ],
     notes: '',
     links: [
       { id: 'l1', label: 'Mission Inn info', url: 'https://www.missioninn.com/festival-of-lights/plan-your-visit/', icon: 'lights', location: 'Downtown Riverside, CA', hours: '5:00 PM – 11:00 PM', info: 'Reserve advance parking if possible; closed Thanksgiving & Christmas Day.' },
@@ -787,6 +994,7 @@ export function createNewDefaultTrip({
         { id: uid('cost'), category: 'tickets', label: 'Activities & Tickets', estimated: 100, final: null, finalEntries: [], note: 'Attractions and tours' }
       ]
     },
+    reservations: [],
     notes: '',
     links: []
   };
@@ -807,6 +1015,8 @@ export const appStore = {
   showAllDays: false,
   weatherPanelExpanded: true,
   expandedBudgetIds: new Set(),
+  vaultTypeFilter: 'all',
+  vaultStatusFilter: 'all',
   currentBackdropUrl: '',
   justShiftedEventIds: new Set(),
   justCompletedEventId: null
@@ -824,7 +1034,8 @@ export function syncActiveTripRef() {
 }
 
 export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
-  const base = fallbackIdx === 0 && rawTrip?.id === 'trip-thanksgiving-default'
+  const isDefaultThanksgiving = fallbackIdx === 0 && rawTrip?.id === 'trip-thanksgiving-default';
+  const base = isDefaultThanksgiving
     ? createInitialState()
     : createNewDefaultTrip();
   const rawDays = Array.isArray(rawTrip?.days) ? rawTrip.days : base.days;
@@ -838,6 +1049,10 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     };
   });
 
+  const normalizedReservations = Array.isArray(rawTrip?.reservations)
+    ? rawTrip.reservations.map((r) => normalizeReservationItem(r)).filter((r) => r.title)
+    : (isDefaultThanksgiving ? base.reservations.map((r) => normalizeReservationItem(r)) : []);
+
   const merged = {
     ...base,
     ...rawTrip,
@@ -848,6 +1063,7 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     days: normalizedDays,
     checklists: Array.isArray(rawTrip?.checklists) ? rawTrip.checklists : base.checklists,
     budget: rawTrip?.budget ? { ...base.budget, ...rawTrip.budget } : base.budget,
+    reservations: normalizedReservations,
     notes: typeof rawTrip?.notes === 'string' ? rawTrip.notes : '',
     links: Array.isArray(rawTrip?.links) ? rawTrip.links : []
   };
@@ -895,6 +1111,8 @@ export function switchToTrip(tripId, silent = false) {
   syncActiveTripRef();
   appStore.activeCarouselIndex = 0;
   appStore.showAllDays = false;
+  appStore.vaultTypeFilter = 'all';
+  appStore.vaultStatusFilter = 'all';
 
   const track = document.getElementById('carouselTrack');
   if (track) track.dataset.dayIds = '';
@@ -1155,11 +1373,14 @@ export function serializeStateForCloud() {
     }),
     checklists: trip.checklists,
     budget: trip.budget,
+    reservations: Array.isArray(trip.reservations)
+      ? trip.reservations.map((r) => normalizeReservationItem(r))
+      : [],
     notes: trip.notes,
     links: trip.links
   }));
   return JSON.stringify({
-    version: 3,
+    version: 4,
     activeTripId: appStore.activeTripId,
     trips: cleanTrips
   });
@@ -1239,18 +1460,23 @@ export async function initCloudSync() {
  * Render Static UI Icons & Live Animated Clock
  */
 export function renderStaticIcons() {
-  document.getElementById('editHeroInlineBtn').innerHTML = ICONS.edit;
-  document.getElementById('addDayIcon').innerHTML = ICONS.plus;
-  document.getElementById('addNewTripIcon').innerHTML = ICONS.newTrip;
-  document.getElementById('switchTripsIcon').innerHTML = ICONS.trips;
-  document.getElementById('savePdfIcon').innerHTML = ICONS.download;
-  document.getElementById('prevIcon').innerHTML = ICONS.chevronLeft;
-  document.getElementById('nextIcon').innerHTML = ICONS.chevronRight;
-  document.getElementById('copyNotesIcon').innerHTML = ICONS.copy;
-  document.getElementById('modalCloseBtn').innerHTML = ICONS.close;
-  document.getElementById('toggleWeatherChevron').innerHTML = ICONS.chevronDown;
-  const catIconEl = document.getElementById('manageCategoriesIcon');
-  if (catIconEl) catIconEl.innerHTML = ICONS.palette;
+  const setHtml = (id, html) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = html;
+  };
+  setHtml('editHeroInlineBtn', ICONS.edit);
+  setHtml('addDayIcon', ICONS.plus);
+  setHtml('addNewTripIcon', ICONS.newTrip);
+  setHtml('switchTripsIcon', ICONS.trips);
+  setHtml('savePdfIcon', ICONS.download);
+  setHtml('prevIcon', ICONS.chevronLeft);
+  setHtml('nextIcon', ICONS.chevronRight);
+  setHtml('copyNotesIcon', ICONS.copy);
+  setHtml('copyAllBookingsIcon', ICONS.copy);
+  setHtml('addReservationIcon', ICONS.plus);
+  setHtml('modalCloseBtn', ICONS.close);
+  setHtml('toggleWeatherChevron', ICONS.chevronDown);
+  setHtml('manageCategoriesIcon', ICONS.palette);
 }
 
 export function updateClock() {

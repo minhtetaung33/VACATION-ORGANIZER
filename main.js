@@ -24,7 +24,8 @@ import {
   scrollToTimelineEvent,
   renderItinerary,
   renderAll,
-  openSavePdfFlow
+  openSavePdfFlow,
+  copyAllVaultBookings
 } from './trip-planner-detail.js';
 
 import {
@@ -35,6 +36,9 @@ import {
 import {
   openHeroModal,
   openTripsModal,
+  openReservationModal,
+  cycleReservationStatus,
+  deleteReservation,
   openChecklistCategoryModal,
   openLinkModal,
   openBudgetModal,
@@ -76,6 +80,9 @@ registerDetailHooks({
   openChecklistCategoryModal,
   openBudgetModal,
   openLinkModal,
+  openReservationModal,
+  cycleReservationStatus,
+  deleteReservation,
   handleDragReorderEvent,
   handleDragMoveToTimeSlot,
   handleDragMoveAcrossDays,
@@ -143,6 +150,15 @@ function bindGlobalEvents() {
     renderItinerary();
   });
 
+  // Unified Reservations, Bookings & Notes Vault Controls
+  document.getElementById('addReservationBtn')?.addEventListener('click', () => {
+    const preselectedType = appStore.vaultTypeFilter && appStore.vaultTypeFilter !== 'all'
+      ? appStore.vaultTypeFilter
+      : null;
+    openReservationModal(null, preselectedType);
+  });
+  document.getElementById('copyAllBookingsBtn')?.addEventListener('click', copyAllVaultBookings);
+
   document.getElementById('addBudgetRowBtn')?.addEventListener('click', () => openBudgetModal(null));
   document.getElementById('addLinkBtn')?.addEventListener('click', () => openLinkModal(null));
   document.getElementById('addChecklistCategoryBtn')?.addEventListener('click', () => openChecklistCategoryModal(null));
@@ -153,7 +169,8 @@ function bindGlobalEvents() {
 
   document.getElementById('notesInput')?.addEventListener('input', (e) => {
     appStore.state.notes = e.target.value;
-    document.getElementById('notesMeta').textContent = `${appStore.state.notes.length} characters`;
+    const notesMetaEl = document.getElementById('notesMeta');
+    if (notesMetaEl) notesMetaEl.textContent = `${appStore.state.notes.length} characters`;
     scheduleCloudSave();
   });
 

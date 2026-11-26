@@ -1,6 +1,8 @@
 import {
   ICONS,
   LINK_ICON_META,
+  RESERVATION_TYPE_META,
+  RESERVATION_STATUS_META,
   BUDGET_CATEGORY_META,
   REAL_CARD_BACKDROPS,
   REAL_THEME_BACKDROPS,
@@ -13,6 +15,7 @@ import {
   inferBudgetCategory,
   getItemFinalCost,
   showToast,
+  copyTextToClipboard,
   openModal,
   closeModal,
   openConfirmDeleteModal,
@@ -51,6 +54,9 @@ export const detailHooks = {
   openChecklistCategoryModal: () => {},
   openBudgetModal: () => {},
   openLinkModal: () => {},
+  openReservationModal: () => {},
+  cycleReservationStatus: () => {},
+  deleteReservation: () => {},
   handleDragReorderEvent: () => {},
   handleDragMoveToTimeSlot: () => {},
   handleDragMoveAcrossDays: () => {},
@@ -625,6 +631,391 @@ export function renderItinerary() {
 }
 
 /**
+ * ============================================================================
+ * UNIFIED RESERVATIONS, BOOKINGS & TRIP NOTES VAULT RENDERER
+ * ============================================================================
+ */
+export function renderReservations() {
+  const state = appStore.state;
+  const list = Array.isArray(state.reservations) ? state.reservations : [];
+  const summaryEl = document.getElementById('vaultStatusSummary');
+  const catFiltersEl = document.getElementById('vaultCategoryFilters');
+  const statusFiltersEl = document.getElementById('vaultStatusFilters');
+  const container = document.getElementById('reservationsContainer');
+
+  if (!container) return;
+
+  const countsByStatus = { confirmed: 0, pending: 0, cancelled: 0 };
+  const countsByType = { hotel: 0, flight: 0, car: 0, restaurant: 0, ticket: 0 };
+
+  list.forEach((item) => {
+    const s = RESERVATION_STATUS_META[item.status] ? item.status : 'pending';
+    const t = RESERVATION_TYPE_META[item.type] ? item.type : 'hotel';
+    countsByStatus[s]++;
+    countsByType[t]++;
+  });
+
+  // 1. Live Status Counters in Header
+  if (summaryEl) {
+    if (list.length === 0) {
+      summaryEl.innerHTML = `
+        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-white/8 border border-white/12 text-white/55">
+          0 Bookings
+        </span>
+      `;
+    } else {
+      summaryEl.innerHTML = Object.entries(RESERVATION_STATUS_META).map(([key, meta]) => `
+        <button
+          type="button"
+          data-vault-quick-status="${key}"
+          title="Filter by ${esc(meta.label)}"
+          class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10px] font-bold transition-all cursor-pointer tabular-nums ${meta.badgeClass} ${
+            countsByStatus[key] === 0 ? 'opacity-45' : 'hover:brightness-110'
+          }"
+        >
+          <span class="w-1.5 h-1.5 rounded-full ${meta.dotClass}"></span>
+          <span>${countsByStatus[key]} ${esc(meta.label)}</span>
+        </button>
+      `).join('');
+
+      summaryEl.querySelectorAll('[data-vault-quick-status]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const picked = btn.dataset.vaultQuickStatus;
+          appStore.vaultStatusFilter = appStore.vaultStatusFilter === picked ? 'all' : picked;
+          renderReservations();
+        });
+      });
+    }
+  }
+
+  // 2. Category Filter Pills
+  if (catFiltersEl) {
+    const activeType = appStore.vaultTypeFilter || 'all';
+    const allBtnHtml = `
+      <button
+        type="button"
+        data-vault-type="all"
+        class="vault-filter-pill inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+          activeType === 'all'
+            ? 'bg-white/20 border-white/40 text-white shadow-sm'
+            : 'bg-black/30 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+        }"
+      >
+        <span>All</span>
+        <span class="text-[10px] opacity-75 tabular-nums">${list.length}</span>
+      </button>
+    `;
+
+    const typeBtnsHtml = Object.entries(RESERVATION_TYPE_META).map(([key, meta]) => {
+      const active = activeType === key;
+      const count = countsByType[key] || 0;
+      return `
+        <button
+          type="button"
+          data-vault-type="${key}"
+          class="vault-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+            active
+              ? `${meta.style} ring-1 ring-white/40 shadow-sm`
+              : 'bg-black/30 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+          }"
+        >
+          <span class="w-3.5 h-3.5 flex items-center justify-center shrink-0">${ICONS[meta.icon]}</span>
+          <span>${esc(meta.shortLabel)}</span>
+          ${count > 0 ? `<span class="text-[10px] opacity-80 tabular-nums">${count}</span>` : ''}
+        </button>
+      `;
+    }).join('');
+
+    catFiltersEl.innerHTML = allBtnHtml + typeBtnsHtml;
+    catFiltersEl.querySelectorAll('[data-vault-type]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        appStore.vaultTypeFilter = btn.dataset.vaultType;
+        renderReservations();
+      });
+    });
+  }
+
+  // 3. Status Filter Pills
+  if (statusFiltersEl) {
+    const activeStatus = appStore.vaultStatusFilter || 'all';
+    const statusPills = [
+      { key: 'all', label: 'Any Status', dot: 'bg-white/50', activeClass: 'bg-white/20 border-white/40 text-white' },
+      ...Object.entries(RESERVATION_STATUS_META).map(([k, m]) => ({
+        key: k,
+        label: m.label,
+        dot: m.dotClass,
+        activeClass: `${m.badgeClass} ring-1 ring-white/35`
+      }))
+    ];
+
+    statusFiltersEl.innerHTML = statusPills.map((sp) => {
+      const active = activeStatus === sp.key;
+      return `
+        <button
+          type="button"
+          data-vault-status="${sp.key}"
+          class="vault-filter-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-semibold cursor-pointer ${
+            active
+              ? sp.activeClass
+              : 'bg-black/30 border-white/10 text-white/55 hover:bg-white/10 hover:text-white'
+          }"
+        >
+          <span class="w-1.5 h-1.5 rounded-full ${sp.dot}"></span>
+          <span>${esc(sp.label)}</span>
+        </button>
+      `;
+    }).join('');
+
+    statusFiltersEl.querySelectorAll('[data-vault-status]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        appStore.vaultStatusFilter = btn.dataset.vaultStatus;
+        renderReservations();
+      });
+    });
+  }
+
+  // 4. Filter & Render Booking Cards
+  const filtered = list.filter((item) => {
+    const matchType = appStore.vaultTypeFilter === 'all' || item.type === appStore.vaultTypeFilter;
+    const matchStatus = appStore.vaultStatusFilter === 'all' || item.status === appStore.vaultStatusFilter;
+    return matchType && matchStatus;
+  });
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full rounded-2xl border border-dashed border-white/15 bg-black/25 p-6 sm:p-8 text-center space-y-3">
+        <div class="mx-auto w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500/20 to-sky-500/20 border border-white/15 flex items-center justify-center text-sky-300">
+          ${ICONS.ticket}
+        </div>
+        <div class="space-y-1">
+          <div class="text-sm font-semibold text-white">Your Trip Vault is Ready</div>
+          <p class="text-xs text-white/55 max-w-md mx-auto">Add hotel &amp; Airbnb stays, flights, rental cars, restaurant reservations, and attraction tickets with check-in times and confirmation numbers.</p>
+        </div>
+        <button type="button" data-vault-empty-add="1" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-500/90 to-sky-500/90 hover:from-orange-400 hover:to-sky-400 text-white shadow-md transition-all cursor-pointer">
+          ${ICONS.plus}
+          <span>Add Your First Booking</span>
+        </button>
+      </div>
+    `;
+    container.querySelector('[data-vault-empty-add]')?.addEventListener('click', () => {
+      detailHooks.openReservationModal(null, null);
+    });
+    return;
+  }
+
+  if (filtered.length === 0) {
+    const activeCatMeta = RESERVATION_TYPE_META[appStore.vaultTypeFilter];
+    container.innerHTML = `
+      <div class="col-span-full rounded-2xl border border-dashed border-white/15 bg-black/25 p-5 text-center space-y-3">
+        <p class="text-xs sm:text-sm text-white/65">No bookings match your active filter.</p>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <button type="button" data-vault-reset-filter="1" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white/12 hover:bg-white/22 border border-white/15 text-white cursor-pointer">
+            Show All Bookings
+          </button>
+          ${activeCatMeta ? `
+            <button type="button" data-vault-add-filtered="${esc(appStore.vaultTypeFilter)}" class="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-gradient-to-r from-orange-500/85 to-sky-500/85 hover:from-orange-400 hover:to-sky-400 text-white cursor-pointer">
+              ${ICONS.plus}
+              <span>Add ${esc(activeCatMeta.shortLabel)}</span>
+            </button>
+          ` : ''}
+        </div>
+      </div>
+    `;
+    container.querySelector('[data-vault-reset-filter]')?.addEventListener('click', () => {
+      appStore.vaultTypeFilter = 'all';
+      appStore.vaultStatusFilter = 'all';
+      renderReservations();
+    });
+    container.querySelector('[data-vault-add-filtered]')?.addEventListener('click', (e) => {
+      detailHooks.openReservationModal(null, e.currentTarget.dataset.vaultAddFiltered);
+    });
+    return;
+  }
+
+  container.innerHTML = filtered.map((res, idx) => {
+    const typeMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
+    const statusMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
+    const isCancelled = res.status === 'cancelled';
+    const mapUrl = res.location ? getStopMapUrl(res.location) : '';
+    const hasTimes = Boolean(res.checkIn || res.checkOut);
+
+    return `
+      <article
+        class="reservation-card ${statusMeta.cardClass} group/res rounded-2xl border p-4 flex flex-col justify-between gap-3 animate-fadeUp"
+        style="animation-delay: ${Math.min(idx * 45, 220)}ms;"
+      >
+        <!-- Top Category Accent Line -->
+        <div class="reservation-card-accent ${typeMeta.accent}"></div>
+
+        <div class="space-y-3">
+          <!-- Card Header: Icon, Category, Title & Interactive Status Pill -->
+          <div class="flex items-start justify-between gap-2.5">
+            <div class="flex items-start gap-2.5 min-w-0 flex-1">
+              <span title="${esc(typeMeta.label)}" class="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 mt-0.5 shadow-md ${typeMeta.style}">
+                ${ICONS[typeMeta.icon]}
+              </span>
+              <div class="min-w-0 flex-1">
+                <div class="text-[10px] font-bold uppercase tracking-widest text-white/55">${esc(typeMeta.label)}</div>
+                <h4 class="text-sm font-bold leading-snug break-words mt-0.5 ${isCancelled ? 'line-through text-white/55' : 'text-white'}">
+                  ${esc(res.title)}
+                </h4>
+                ${res.provider ? `<div class="text-[11px] text-white/60 truncate mt-0.5">${esc(res.provider)}</div>` : ''}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-cycle-res="${esc(res.id)}"
+              title="Click to switch status (Confirmed → Pending → Cancelled)"
+              class="reservation-status-btn inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold shrink-0 cursor-pointer ${statusMeta.badgeClass}"
+            >
+              <span class="w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}"></span>
+              <span>${esc(statusMeta.label)}</span>
+            </button>
+          </div>
+
+          <!-- Dynamic Check-In / Check-Out (or Departure / Arrival, Pick-Up / Drop-Off) -->
+          ${hasTimes ? `
+            <div class="grid ${res.checkIn && res.checkOut ? 'grid-cols-2' : 'grid-cols-1'} gap-2">
+              ${res.checkIn ? `
+                <div class="rounded-xl bg-black/35 border border-white/10 px-2.5 py-2 min-w-0">
+                  <div class="text-[9px] font-bold uppercase tracking-wider text-sky-300/85">${esc(typeMeta.startLabel)}</div>
+                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(res.checkIn)}</div>
+                </div>
+              ` : ''}
+              ${res.checkOut ? `
+                <div class="rounded-xl bg-black/35 border border-white/10 px-2.5 py-2 min-w-0">
+                  <div class="text-[9px] font-bold uppercase tracking-wider text-orange-300/85">${esc(typeMeta.endLabel)}</div>
+                  <div class="text-[11px] font-semibold text-white/95 mt-0.5 break-words tabular-nums">${esc(res.checkOut)}</div>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          <!-- Location Link -->
+          ${res.location ? `
+            <div class="flex items-center gap-1.5 text-[11px] text-white/75 min-w-0">
+              <span class="text-sky-300/85 shrink-0">${ICONS.pin}</span>
+              ${mapUrl ? `
+                <a href="${esc(mapUrl)}" target="_blank" rel="noopener noreferrer" class="truncate hover:text-sky-300 transition-colors underline decoration-white/20 hover:decoration-sky-300">
+                  ${esc(getStopLocationLabel(res.location))}
+                </a>
+              ` : `<span class="truncate">${esc(res.location)}</span>`}
+            </div>
+          ` : ''}
+
+          <!-- Booking Notes -->
+          ${res.notes ? `
+            <p class="text-[11px] text-white/65 leading-relaxed bg-black/25 border border-white/8 rounded-xl px-2.5 py-2 break-words">
+              ${esc(res.notes)}
+            </p>
+          ` : ''}
+        </div>
+
+        <!-- Card Footer: Confirmation Code Chip, Booking Link, Edit & Delete -->
+        <div class="pt-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap items-center gap-1.5 min-w-0">
+            ${res.confirmationNumber ? `
+              <button
+                type="button"
+                data-copy-code="${esc(res.confirmationNumber)}"
+                title="Click to copy confirmation number"
+                class="reservation-code-chip inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/28 border border-sky-400/35 text-[11px] font-bold text-sky-100 cursor-pointer max-w-full"
+              >
+                <span class="text-sky-300 shrink-0">${ICONS.hash}</span>
+                <span class="truncate">${esc(res.confirmationNumber)}</span>
+                <span class="opacity-65 shrink-0">${ICONS.copy}</span>
+              </button>
+            ` : `
+              <button
+                type="button"
+                data-edit-res="${esc(res.id)}"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.05] hover:bg-white/12 border border-dashed border-white/15 text-[10px] font-medium text-white/45 hover:text-white/80 transition-colors cursor-pointer"
+              >+ Add Conf. #</button>
+            `}
+
+            ${res.bookingUrl ? `
+              <a
+                href="${esc(res.bookingUrl)}"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open booking or ticket page"
+                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-orange-500/25 border border-white/15 hover:border-orange-400/40 text-[11px] font-semibold text-white/90 hover:text-white transition-all shrink-0"
+              >
+                <span>Open</span>
+                <span class="opacity-75">${ICONS.link}</span>
+              </a>
+            ` : ''}
+          </div>
+
+          <div class="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-0 sm:group-hover/res:opacity-100 transition-opacity duration-200">
+            <button type="button" data-edit-res="${esc(res.id)}" title="Edit Booking" class="p-1.5 rounded-lg text-white/55 hover:text-sky-300 hover:bg-sky-400/15 cursor-pointer">${ICONS.edit}</button>
+            <button type="button" data-del-res="${esc(res.id)}" title="Delete Booking" class="p-1.5 rounded-lg text-white/45 hover:text-rose-300 hover:bg-rose-500/15 cursor-pointer">${ICONS.trash}</button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-cycle-res]').forEach((btn) => {
+    btn.addEventListener('click', () => detailHooks.cycleReservationStatus(btn.dataset.cycleRes));
+  });
+
+  container.querySelectorAll('[data-copy-code]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const code = btn.dataset.copyCode;
+      copyTextToClipboard(code, `Copied confirmation # ${code}`);
+    });
+  });
+
+  container.querySelectorAll('[data-edit-res]').forEach((btn) => {
+    btn.addEventListener('click', () => detailHooks.openReservationModal(btn.dataset.editRes));
+  });
+
+  container.querySelectorAll('[data-del-res]').forEach((btn) => {
+    btn.addEventListener('click', () => detailHooks.deleteReservation(btn.dataset.delRes));
+  });
+}
+
+/**
+ * Copy All Reservations, Confirmation Numbers & Personal Notes as Clean Text
+ */
+export function copyAllVaultBookings() {
+  const state = appStore.state;
+  const list = Array.isArray(state.reservations) ? state.reservations : [];
+  const notesText = String(state.notes || '').trim();
+
+  if (list.length === 0 && !notesText) {
+    showToast('No bookings or notes to copy yet', 'error');
+    return;
+  }
+
+  const lines = [`=== ${state.meta?.title || 'TRIP VAULT'} ===`];
+
+  if (list.length > 0) {
+    lines.push('', 'RESERVATIONS & BOOKINGS:');
+    list.forEach((res, idx) => {
+      const tMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
+      const sMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
+      lines.push(`${idx + 1}. [${sMeta.label.toUpperCase()}] ${tMeta.label}: ${res.title}`);
+      if (res.provider) lines.push(`   Provider: ${res.provider}`);
+      if (res.checkIn) lines.push(`   ${tMeta.startLabel}: ${res.checkIn}`);
+      if (res.checkOut) lines.push(`   ${tMeta.endLabel}: ${res.checkOut}`);
+      if (res.location) lines.push(`   Location: ${res.location}`);
+      if (res.confirmationNumber) lines.push(`   Confirmation #: ${res.confirmationNumber}`);
+      if (res.bookingUrl) lines.push(`   Link: ${res.bookingUrl}`);
+      if (res.notes) lines.push(`   Notes: ${res.notes}`);
+    });
+  }
+
+  if (notesText) {
+    lines.push('', 'PERSONAL TRIP NOTES:', notesText);
+  }
+
+  copyTextToClipboard(lines.join('\n'), 'All bookings & notes copied!');
+}
+
+/**
  * Render Trip Readiness Checklist
  */
 export function renderChecklist() {
@@ -1099,8 +1490,10 @@ export function renderBudget() {
  */
 export function renderNotes() {
   const el = document.getElementById('notesInput');
+  if (!el) return;
   el.value = appStore.state.notes;
-  document.getElementById('notesMeta').textContent = `${appStore.state.notes.length} characters`;
+  const metaEl = document.getElementById('notesMeta');
+  if (metaEl) metaEl.textContent = `${appStore.state.notes.length} characters`;
 }
 
 /**
@@ -1194,6 +1587,7 @@ export function renderAll() {
   renderForecastStrip();
   renderCarousel();
   renderItinerary();
+  renderReservations();
   renderChecklist();
   renderBudget();
   renderNotes();
@@ -1202,7 +1596,7 @@ export function renderAll() {
 
 /**
  * ============================================================================
- * GLASSMORPHISM SPATIAL PDF ENGINE (Includes Custom Categories & Travel Totals)
+ * GLASSMORPHISM SPATIAL PDF ENGINE (Includes Reservations Vault, Categories & Travel)
  * ============================================================================
  */
 function loadImageForCanvas(url, timeoutMs = 4500) {
@@ -1819,8 +2213,152 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     }
   });
 
+  // ==================== RESERVATIONS & BOOKINGS VAULT GLASS MODULE ====================
+  onProgress(74, 'Crafting reservations vault, budget & checklist...', 3);
+  const reservationsList = Array.isArray(state.reservations) ? state.reservations : [];
+  if (reservationsList.length > 0) {
+    ensureSpace(88);
+    const cCount = reservationsList.filter((r) => r.status === 'confirmed').length;
+    const pCount = reservationsList.filter((r) => r.status === 'pending').length;
+    const xCount = reservationsList.filter((r) => r.status === 'cancelled').length;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.2);
+    doc.setTextColor(56, 189, 248);
+    doc.text('RESERVATIONS • BOOKINGS • CONFIRMATIONS', margin + 6, y + 8);
+    doc.setFontSize(12);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`Reservations & Trip Vault (${reservationsList.length})`, margin + 6, y + 22);
+
+    drawGlassPill(
+      doc,
+      margin + contentW - 210,
+      y + 7,
+      pdfSafeText(`${cCount} Confirmed • ${pCount} Pending • ${xCount} Cancelled`),
+      {
+        bgRgb: [255, 255, 255],
+        bgAlpha: 0.12,
+        borderAlpha: 0.22,
+        textRgb: [226, 232, 240],
+        fontSize: 6.8,
+        height: 15
+      }
+    );
+
+    y += 30;
+
+    reservationsList.forEach((res) => {
+      const tMeta = RESERVATION_TYPE_META[res.type] || RESERVATION_TYPE_META.hotel;
+      const sMeta = RESERVATION_STATUS_META[res.status] || RESERVATION_STATUS_META.pending;
+
+      const timeSegments = [];
+      if (res.checkIn) timeSegments.push(`${tMeta.startLabel}: ${res.checkIn}`);
+      if (res.checkOut) timeSegments.push(`${tMeta.endLabel}: ${res.checkOut}`);
+      const timeLine = pdfSafeText(timeSegments.join('   •   '));
+
+      const metaSegments = [];
+      if (res.provider) metaSegments.push(res.provider);
+      if (res.location) metaSegments.push(res.location);
+      const metaLine = pdfSafeText(metaSegments.join('  •  '));
+
+      const confUrlLine = [
+        res.confirmationNumber ? `Conf #: ${res.confirmationNumber}` : '',
+        res.bookingUrl ? res.bookingUrl : ''
+      ].filter(Boolean).join('   •   ');
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.8);
+      const noteLines = res.notes ? doc.splitTextToSize(pdfSafeText(res.notes), contentW - 32) : [];
+
+      const cardH =
+        28 +
+        (metaLine ? 12 : 0) +
+        (timeLine ? 12 : 0) +
+        (confUrlLine ? 13 : 0) +
+        (noteLines.length > 0 ? noteLines.length * 10.5 + 4 : 0);
+
+      ensureSpace(cardH + 8);
+
+      drawGlassCard(doc, margin, y, contentW, cardH, 11, {
+        fillRgb: [16, 20, 30],
+        fillAlpha: res.status === 'cancelled' ? 0.56 : 0.74,
+        tintAlpha: 0.05,
+        borderRgb: sMeta.rgb,
+        borderAlpha: 0.34,
+        topSheen: false
+      });
+
+      // Category label & Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.6);
+      doc.setTextColor(tMeta.rgb[0], tMeta.rgb[1], tMeta.rgb[2]);
+      doc.text(pdfSafeText(tMeta.label.toUpperCase()), margin + 14, y + 12);
+
+      // Status Pill top-right
+      const statusText = sMeta.label.toUpperCase();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.8);
+      const pillW = doc.getTextWidth(statusText) + 14;
+      drawGlassPill(doc, margin + contentW - pillW - 12, y + 6, statusText, {
+        bgRgb: sMeta.rgb,
+        bgAlpha: 0.2,
+        borderRgb: sMeta.rgb,
+        borderAlpha: 0.5,
+        textRgb: sMeta.rgb,
+        fontSize: 6.8,
+        height: 14,
+        padX: 7
+      });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(res.status === 'cancelled' ? 160 : 255, res.status === 'cancelled' ? 170 : 255, res.status === 'cancelled' ? 185 : 255);
+      doc.text(pdfSafeText(res.title || ''), margin + 14, y + 23.5, { maxWidth: contentW - pillW - 34 });
+
+      let innerY = y + 34.5;
+      if (metaLine) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.8);
+        doc.setTextColor(203, 213, 225);
+        doc.text(metaLine, margin + 14, innerY, { maxWidth: contentW - 28 });
+        innerY += 12;
+      }
+
+      if (timeLine) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.8);
+        doc.setTextColor(253, 186, 116);
+        doc.text(timeLine, margin + 14, innerY, { maxWidth: contentW - 28 });
+        innerY += 12;
+      }
+
+      if (confUrlLine) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(7.8);
+        doc.setTextColor(125, 211, 252);
+        const safeConfUrl = pdfSafeText(confUrlLine);
+        doc.text(safeConfUrl, margin + 14, innerY, { maxWidth: contentW - 28 });
+        if (res.bookingUrl) {
+          doc.link(margin + 12, innerY - 9, contentW - 24, 12, { url: res.bookingUrl });
+        }
+        innerY += 13;
+      }
+
+      if (noteLines.length > 0) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.8);
+        doc.setTextColor(186, 200, 218);
+        doc.text(noteLines, margin + 14, innerY);
+      }
+
+      y += cardH + 7;
+    });
+
+    y += 8;
+  }
+
   // ==================== BUDGET COMPARISON GLASS MODULE ====================
-  onProgress(78, 'Crafting glass budget, checklist & links...', 3);
+  onProgress(82, 'Crafting glass budget, checklist & links...', 3);
   const budgetHeaderH = 62;
   ensureSpace(160);
 
@@ -2074,7 +2612,7 @@ export async function buildTripPdfDocument(onProgress = () => {}) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(11.5);
     doc.setTextColor(255, 255, 255);
-    doc.text('Trip Notes & Confirmations', margin + 18, y + 30);
+    doc.text('Personal Trip Notes & Reminders', margin + 18, y + 30);
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.8);
@@ -2188,7 +2726,7 @@ export async function openSavePdfFlow() {
 
         <div>
           <h4 id="pdfStatusTitle" class="text-base font-semibold text-white">Capturing your live landscape backdrop...</h4>
-          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, photos, budget &amp; links</p>
+          <p id="pdfStatusSub" class="text-xs text-white/60 mt-1">Compositing translucent glass cards, reservations, budget &amp; links</p>
         </div>
 
         <div class="relative h-2.5 w-full rounded-full bg-white/10 overflow-hidden">

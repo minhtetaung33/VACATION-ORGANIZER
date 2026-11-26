@@ -1,6 +1,8 @@
 import {
   ICONS,
   LINK_ICON_META,
+  RESERVATION_TYPE_META,
+  RESERVATION_STATUS_META,
   CATEGORY_META,
   CUSTOM_CATEGORY_THEMES,
   CUSTOM_CATEGORY_ICON_OPTIONS,
@@ -10,6 +12,7 @@ import {
   uid,
   esc,
   normalizeLocationCoords,
+  normalizeReservationItem,
   getAllCategories,
   getCategoryMeta,
   inferBudgetCategory,
@@ -60,6 +63,7 @@ import {
   renderChecklist,
   renderBudget,
   updateBudgetTotals,
+  renderReservations,
   renderLinks,
   renderAll
 } from './trip-planner-detail.js';
@@ -530,7 +534,7 @@ export function openTripsModal() {
     title: `My Trips (${appStore.trips.length})`,
     bodyHtml: `
       <div class="space-y-3">
-        <p class="text-xs text-white/60">Select any previous or active trip to open its itinerary, checklist, budget, and backdrop.</p>
+        <p class="text-xs text-white/60">Select any previous or active trip to open its itinerary, reservations, checklist, budget, and backdrop.</p>
         <div class="space-y-2.5">${tripCardsHtml}</div>
       </div>
     `,
@@ -567,7 +571,7 @@ export function openTripsModal() {
       openConfirmDeleteModal({
         title: 'Delete Saved Trip',
         itemName: targetTrip.meta?.title || 'Trip',
-        detail: 'This will permanently remove this trip and all of its days, budget, and notes.',
+        detail: 'This will permanently remove this trip and all of its days, reservations, budget, and notes.',
         confirmLabel: 'Yes, Delete Trip',
         onConfirm: () => {
           appStore.trips = appStore.trips.filter((t) => t.id !== targetId);
@@ -582,6 +586,318 @@ export function openTripsModal() {
         }
       });
     });
+  });
+}
+
+/**
+ * ============================================================================
+ * UNIFIED RESERVATIONS & BOOKINGS MODAL (Dynamic Category Labels + Status)
+ * ============================================================================
+ */
+export function openReservationModal(reservationId = null, preselectedType = null) {
+  const state = appStore.state;
+  if (!Array.isArray(state.reservations)) state.reservations = [];
+  const existing = reservationId ? state.reservations.find((r) => r.id === reservationId) : null;
+
+  let selectedType = (existing?.type && RESERVATION_TYPE_META[existing.type])
+    ? existing.type
+    : (preselectedType && RESERVATION_TYPE_META[preselectedType] ? preselectedType : 'hotel');
+  let selectedStatus = (existing?.status && RESERVATION_STATUS_META[existing.status])
+    ? existing.status
+    : 'confirmed';
+
+  const typeMeta = RESERVATION_TYPE_META[selectedType];
+  const statusMeta = RESERVATION_STATUS_META[selectedStatus];
+  const inp = 'w-full rounded-xl border border-white/15 bg-black/40 px-3.5 py-2.5 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-sky-400/40 transition-all';
+
+  const typeButtonsHtml = Object.entries(RESERVATION_TYPE_META).map(([key, meta]) => `
+    <button
+      type="button"
+      data-res-type="${key}"
+      class="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+        selectedType === key
+          ? `${meta.style} ring-1 ring-white/50 shadow-md scale-[1.02]`
+          : 'bg-black/35 border-white/10 text-white/65 hover:bg-white/10 hover:text-white'
+      }"
+    >
+      <span class="shrink-0">${ICONS[meta.icon]}</span>
+      <span class="truncate">${esc(meta.shortLabel)}</span>
+    </button>
+  `).join('');
+
+  const statusButtonsHtml = Object.entries(RESERVATION_STATUS_META).map(([key, meta]) => `
+    <button
+      type="button"
+      data-res-status="${key}"
+      class="flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+        selectedStatus === key
+          ? `${meta.badgeClass} ring-1 ring-white/45 shadow-md scale-[1.02]`
+          : 'bg-black/35 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+      }"
+    >
+      <span class="w-2 h-2 rounded-full ${meta.dotClass}"></span>
+      <span>${esc(meta.label)}</span>
+    </button>
+  `).join('');
+
+  openModal({
+    title: existing ? 'Edit Booking / Reservation' : 'Add Booking / Reservation',
+    bodyHtml: `
+      <div class="space-y-4">
+        <!-- Live Preview Strip -->
+        <div class="rounded-2xl bg-black/35 border border-white/15 px-3.5 py-3 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span id="rPreviewIcon" class="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${typeMeta.style}">
+              ${ICONS[typeMeta.icon]}
+            </span>
+            <div class="min-w-0">
+              <div id="rPreviewType" class="text-[10px] font-bold uppercase tracking-widest text-sky-300">${esc(typeMeta.label)}</div>
+              <div id="rPreviewTitle" class="text-sm font-semibold text-white truncate">${esc(existing?.title || 'New Reservation')}</div>
+            </div>
+          </div>
+          <span id="rPreviewStatus" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold shrink-0 ${statusMeta.badgeClass}">
+            <span class="w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}"></span>
+            <span>${esc(statusMeta.label)}</span>
+          </span>
+        </div>
+
+        <!-- Category Selector -->
+        <div>
+          <label class="block text-xs font-semibold text-white/65 mb-1.5">Booking Category</label>
+          <div id="rTypeGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">${typeButtonsHtml}</div>
+        </div>
+
+        <!-- Status Selector -->
+        <div>
+          <label class="block text-xs font-semibold text-white/65 mb-1.5">Reservation Status</label>
+          <div id="rStatusGrid" class="grid grid-cols-3 gap-2">${statusButtonsHtml}</div>
+        </div>
+
+        <!-- Core Info -->
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold text-white/65 mb-1">Booking Title / Name</label>
+            <input id="rTitle" placeholder="${esc(typeMeta.titlePlaceholder)}" class="${inp}" value="${esc(existing?.title || '')}" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Provider / Details <span class="text-white/40 font-normal">(Optional)</span></label>
+              <input id="rProvider" placeholder="${esc(typeMeta.providerPlaceholder)}" class="${inp}" value="${esc(existing?.provider || '')}" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Location / Address <span class="text-white/40 font-normal">(Optional)</span></label>
+              <input id="rLocation" placeholder="${esc(typeMeta.locationPlaceholder)}" class="${inp}" value="${esc(existing?.location || '')}" />
+            </div>
+          </div>
+
+          <!-- Dynamic Check-In / Check-Out Times -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label id="rCheckInLabel" class="block text-xs font-semibold text-sky-300/90 mb-1">${esc(typeMeta.startLabel)}</label>
+              <input id="rCheckIn" placeholder="${esc(typeMeta.startPlaceholder)}" class="${inp} border-sky-400/25" value="${esc(existing?.checkIn || '')}" />
+            </div>
+            <div>
+              <label id="rCheckOutLabel" class="block text-xs font-semibold text-orange-300/90 mb-1">${esc(typeMeta.endLabel)}</label>
+              <input id="rCheckOut" placeholder="${esc(typeMeta.endPlaceholder)}" class="${inp} border-orange-400/25" value="${esc(existing?.checkOut || '')}" />
+            </div>
+          </div>
+
+          <!-- Confirmation # & Booking Link -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Confirmation Number</label>
+              <input id="rCode" placeholder="${esc(typeMeta.codePlaceholder)}" class="${inp} font-mono tracking-wider uppercase" value="${esc(existing?.confirmationNumber || '')}" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-white/65 mb-1">Booking / Ticket Link</label>
+              <input id="rUrl" type="url" placeholder="https://..." class="${inp}" value="${esc(existing?.bookingUrl || '')}" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-white/65 mb-1">Notes / Check-in Instructions</label>
+            <textarea id="rNotes" rows="2" placeholder="${esc(typeMeta.notePlaceholder)}" class="${inp}">${esc(existing?.notes || '')}</textarea>
+          </div>
+        </div>
+      </div>
+    `,
+    footerButtons: [
+      { label: 'Cancel', onClick: closeModal },
+      {
+        label: existing ? 'Save Booking' : 'Add Booking',
+        variant: 'primary',
+        onClick: () => {
+          const title = document.getElementById('rTitle').value.trim();
+          if (!title) return showToast('Please enter a booking title', 'error');
+
+          let bookingUrl = document.getElementById('rUrl').value.trim();
+          if (bookingUrl && !/^https?:\/\//i.test(bookingUrl)) {
+            bookingUrl = 'https://' + bookingUrl;
+          }
+
+          const payload = normalizeReservationItem({
+            id: existing ? existing.id : uid('res'),
+            type: selectedType,
+            status: selectedStatus,
+            title,
+            provider: document.getElementById('rProvider').value.trim(),
+            location: document.getElementById('rLocation').value.trim(),
+            checkIn: document.getElementById('rCheckIn').value.trim(),
+            checkOut: document.getElementById('rCheckOut').value.trim(),
+            confirmationNumber: document.getElementById('rCode').value.trim(),
+            bookingUrl,
+            notes: document.getElementById('rNotes').value.trim()
+          });
+
+          if (existing) {
+            Object.assign(existing, payload);
+            showToast('Booking updated');
+          } else {
+            state.reservations.push(payload);
+            // Reset vault filter if the newly added booking would otherwise be hidden
+            if (appStore.vaultTypeFilter !== 'all' && appStore.vaultTypeFilter !== payload.type) {
+              appStore.vaultTypeFilter = 'all';
+            }
+            if (appStore.vaultStatusFilter !== 'all' && appStore.vaultStatusFilter !== payload.status) {
+              appStore.vaultStatusFilter = 'all';
+            }
+            showToast(`Added "${payload.title}" to Trip Vault`);
+          }
+
+          closeModal();
+          renderReservations();
+          scheduleCloudSave();
+        }
+      }
+    ]
+  });
+
+  const titleEl = document.getElementById('rTitle');
+  const providerEl = document.getElementById('rProvider');
+  const locationEl = document.getElementById('rLocation');
+  const checkInEl = document.getElementById('rCheckIn');
+  const checkOutEl = document.getElementById('rCheckOut');
+  const checkInLbl = document.getElementById('rCheckInLabel');
+  const checkOutLbl = document.getElementById('rCheckOutLabel');
+  const codeEl = document.getElementById('rCode');
+  const notesEl = document.getElementById('rNotes');
+  const previewIconEl = document.getElementById('rPreviewIcon');
+  const previewTypeEl = document.getElementById('rPreviewType');
+  const previewTitleEl = document.getElementById('rPreviewTitle');
+  const previewStatusEl = document.getElementById('rPreviewStatus');
+
+  function syncReservationModalUI() {
+    const tMeta = RESERVATION_TYPE_META[selectedType] || RESERVATION_TYPE_META.hotel;
+    const sMeta = RESERVATION_STATUS_META[selectedStatus] || RESERVATION_STATUS_META.confirmed;
+
+    if (previewIconEl) {
+      previewIconEl.className = `w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${tMeta.style}`;
+      previewIconEl.innerHTML = ICONS[tMeta.icon];
+    }
+    if (previewTypeEl) previewTypeEl.textContent = tMeta.label;
+    if (previewTitleEl) previewTitleEl.textContent = titleEl?.value.trim() || `New ${tMeta.label}`;
+    if (previewStatusEl) {
+      previewStatusEl.className = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold shrink-0 ${sMeta.badgeClass}`;
+      previewStatusEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${sMeta.dotClass}"></span><span>${esc(sMeta.label)}</span>`;
+    }
+
+    if (titleEl) titleEl.placeholder = tMeta.titlePlaceholder;
+    if (providerEl) providerEl.placeholder = tMeta.providerPlaceholder;
+    if (locationEl) locationEl.placeholder = tMeta.locationPlaceholder;
+    if (checkInLbl) checkInLbl.textContent = tMeta.startLabel;
+    if (checkOutLbl) checkOutLbl.textContent = tMeta.endLabel;
+    if (checkInEl) checkInEl.placeholder = tMeta.startPlaceholder;
+    if (checkOutEl) checkOutEl.placeholder = tMeta.endPlaceholder;
+    if (codeEl) codeEl.placeholder = tMeta.codePlaceholder;
+    if (notesEl) notesEl.placeholder = tMeta.notePlaceholder;
+
+    document.querySelectorAll('[data-res-type]').forEach((btn) => {
+      const k = btn.dataset.resType;
+      const m = RESERVATION_TYPE_META[k];
+      const active = k === selectedType;
+      btn.className = `flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+        active
+          ? `${m.style} ring-1 ring-white/50 shadow-md scale-[1.02]`
+          : 'bg-black/35 border-white/10 text-white/65 hover:bg-white/10 hover:text-white'
+      }`;
+    });
+
+    document.querySelectorAll('[data-res-status]').forEach((btn) => {
+      const k = btn.dataset.resStatus;
+      const m = RESERVATION_STATUS_META[k];
+      const active = k === selectedStatus;
+      btn.className = `flex items-center justify-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+        active
+          ? `${m.badgeClass} ring-1 ring-white/45 shadow-md scale-[1.02]`
+          : 'bg-black/35 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+      }`;
+    });
+  }
+
+  document.querySelectorAll('[data-res-type]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedType = btn.dataset.resType;
+      syncReservationModalUI();
+    });
+  });
+
+  document.querySelectorAll('[data-res-status]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      selectedStatus = btn.dataset.resStatus;
+      syncReservationModalUI();
+    });
+  });
+
+  titleEl?.addEventListener('input', () => {
+    if (previewTitleEl) {
+      const tMeta = RESERVATION_TYPE_META[selectedType] || RESERVATION_TYPE_META.hotel;
+      previewTitleEl.textContent = titleEl.value.trim() || `New ${tMeta.label}`;
+    }
+  });
+
+  setTimeout(() => {
+    if (!existing && titleEl) titleEl.focus();
+  }, 100);
+}
+
+/**
+ * One-Click Status Cycle on Any Booking Card (Confirmed → Pending → Cancelled)
+ */
+export function cycleReservationStatus(reservationId) {
+  const list = appStore.state.reservations || [];
+  const target = list.find((r) => r.id === reservationId);
+  if (!target) return;
+
+  const currMeta = RESERVATION_STATUS_META[target.status] || RESERVATION_STATUS_META.pending;
+  const nextStatus = currMeta.next || 'confirmed';
+  const nextMeta = RESERVATION_STATUS_META[nextStatus] || RESERVATION_STATUS_META.confirmed;
+
+  target.status = nextStatus;
+  renderReservations();
+  scheduleCloudSave();
+  showToast(`"${target.title}" marked ${nextMeta.label}`);
+}
+
+/**
+ * Delete Booking Confirmation
+ */
+export function deleteReservation(reservationId) {
+  const state = appStore.state;
+  const target = (state.reservations || []).find((r) => r.id === reservationId);
+  if (!target) return;
+
+  openConfirmDeleteModal({
+    title: 'Delete Reservation',
+    itemName: target.title,
+    detail: 'Do you want to remove this booking and its confirmation details from your Trip Vault?',
+    confirmLabel: 'Yes, Remove Booking',
+    onConfirm: () => {
+      state.reservations = (state.reservations || []).filter((r) => r.id !== target.id);
+      renderReservations();
+      scheduleCloudSave();
+      showToast('Booking removed');
+    }
   });
 }
 
@@ -2174,7 +2490,7 @@ export function confirmResetPlanner() {
   openConfirmDeleteModal({
     title: 'Reset Current Trip',
     itemName: isOriginal ? 'Restore Default Thanksgiving Trip' : `Reset "${state.meta.title}"`,
-    detail: 'This will restore the default itinerary, checklist, budget, and clear notes for the active trip (your other saved trips remain safe).',
+    detail: 'This will restore the default itinerary, reservations, checklist, budget, and clear notes for the active trip (your other saved trips remain safe).',
     confirmLabel: 'Yes, Reset Trip',
     onConfirm: () => {
       const firstDay = state.days[0];
@@ -2192,6 +2508,8 @@ export function confirmResetPlanner() {
       syncActiveTripRef();
       appStore.activeCarouselIndex = 0;
       appStore.showAllDays = false;
+      appStore.vaultTypeFilter = 'all';
+      appStore.vaultStatusFilter = 'all';
       const track = document.getElementById('carouselTrack');
       if (track) track.dataset.dayIds = '';
       updateBackdropForDay(appStore.state.days[0]);

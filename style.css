@@ -823,6 +823,108 @@ body::-webkit-scrollbar,
 }
 
 /* ============================================================================
+   UNIFIED RESERVATIONS, BOOKINGS & TRIP NOTES VAULT
+   ============================================================================ */
+
+.reservation-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 240ms ease,
+    background-color 240ms ease,
+    box-shadow 260ms ease,
+    opacity 240ms ease;
+}
+
+.reservation-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 40px -14px rgba(0, 0, 0, 0.72);
+}
+
+.reservation-card--confirmed {
+  border-color: rgba(52, 211, 153, 0.26);
+  background: linear-gradient(155deg, rgba(16, 185, 129, 0.08) 0%, rgba(255, 255, 255, 0.03) 55%, rgba(15, 23, 42, 0.25) 100%);
+}
+
+.reservation-card--confirmed:hover {
+  border-color: rgba(52, 211, 153, 0.5);
+  box-shadow: 0 18px 38px -14px rgba(16, 185, 129, 0.28);
+}
+
+.reservation-card--pending {
+  border-color: rgba(251, 191, 36, 0.3);
+  background: linear-gradient(155deg, rgba(245, 158, 11, 0.09) 0%, rgba(255, 255, 255, 0.03) 55%, rgba(15, 23, 42, 0.25) 100%);
+}
+
+.reservation-card--pending:hover {
+  border-color: rgba(251, 191, 36, 0.55);
+  box-shadow: 0 18px 38px -14px rgba(245, 158, 11, 0.28);
+}
+
+.reservation-card--cancelled {
+  border-color: rgba(251, 113, 133, 0.26);
+  background: linear-gradient(155deg, rgba(244, 63, 94, 0.07) 0%, rgba(15, 18, 28, 0.55) 100%);
+  opacity: 0.76;
+}
+
+.reservation-card--cancelled:hover {
+  opacity: 0.94;
+  border-color: rgba(251, 113, 133, 0.45);
+}
+
+.reservation-card-accent {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 2px;
+  border-radius: 999px;
+  opacity: 0.65;
+  transition: opacity 260ms ease;
+  pointer-events: none;
+}
+
+.reservation-card:hover .reservation-card-accent {
+  opacity: 1;
+}
+
+.reservation-status-btn {
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), filter 180ms ease;
+}
+
+.reservation-status-btn:hover {
+  transform: scale(1.04);
+  filter: brightness(1.12);
+}
+
+.reservation-status-btn:active {
+  transform: scale(0.96);
+}
+
+.reservation-code-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.04em;
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.reservation-code-chip:hover {
+  transform: translateY(-1px);
+}
+
+.vault-filter-pill {
+  transition:
+    background-color 200ms ease,
+    border-color 200ms ease,
+    color 200ms ease,
+    transform 180ms ease;
+}
+
+.vault-filter-pill:active {
+  transform: scale(0.96);
+}
+
+/* ============================================================================
    LIVE ACTIVITY CATEGORY ANIMATIONS (Exciting, Smooth & Category-Aware)
    ============================================================================ */
 
@@ -1032,7 +1134,10 @@ body::-webkit-scrollbar,
   .mapify-tour-beacon,
   .timeline-card.just-shifted,
   .timeline-card.map-focus-pulse,
-  .timeline-card.just-completed {
+  .timeline-card.just-completed,
+  .reservation-card,
+  .reservation-status-btn {
     animation: none !important;
+    transition: none !important;
   }
 }

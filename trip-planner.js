@@ -924,7 +924,9 @@ export function getItemFinalCost(item) {
 
 /**
  * ============================================================================
- * AUTOMATIC VACATION CELEBRATION & FIREWORKS ENGINE (Start Day → End Day)
+ * AUTOMATIC VACATION CELEBRATION & FIREWORKS ENGINE
+ * (Triggers on Page Refresh During Vacation Dates AND When Switching
+ *  Destination Spotlight to Today's Matching Date)
  * ============================================================================
  */
 const VACATION_FIREWORK_PALETTE = [
@@ -1017,7 +1019,6 @@ export function getActiveVacationStatus(trip = appStore.state, now = new Date())
   const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const msPerDay = 24 * 60 * 60 * 1000;
 
-  // Gather parsed date tokens from trip days first
   const dayTokens = [];
   (trip.days || []).forEach((d) => {
     const tok = parseVacationDateToken(d?.shortDate) || parseVacationDateToken(d?.title);
@@ -1056,7 +1057,6 @@ export function getActiveVacationStatus(trip = appStore.state, now = new Date())
       const result = evaluateWindow(buildChronologicalDates(dayTokens, explicitYear));
       if (result) return result;
     } else {
-      // Check current year first, then previous year (handles Dec 30 -> Jan 2 trips seamlessly)
       const currentYrResult = evaluateWindow(buildChronologicalDates(dayTokens, now.getFullYear()));
       if (currentYrResult) return currentYrResult;
       const wrapYrResult = evaluateWindow(buildChronologicalDates(dayTokens, now.getFullYear() - 1));
@@ -1064,7 +1064,6 @@ export function getActiveVacationStatus(trip = appStore.state, now = new Date())
     }
   }
 
-  // Fallback: Check active (non-cancelled) Booki reservation dates if days have no dates yet
   const resEntries = [];
   (trip.reservations || []).forEach((r) => {
     if (r?.status === 'cancelled') return;
@@ -1083,6 +1082,60 @@ export function getActiveVacationStatus(trip = appStore.state, now = new Date())
   }
 
   return null;
+}
+
+/**
+ * Check Whether a Specific Destination Spotlight Day Matches Today's Local Date
+ */
+export function getSpotlightTodayStatus(day, trip = appStore.state, now = new Date()) {
+  if (!day || !trip) return null;
+
+  const targetTok = parseVacationDateToken(day.shortDate) || parseVacationDateToken(day.title);
+  if (!targetTok) return null;
+
+  const todayYear = now.getFullYear();
+  const todayMonth = now.getMonth() + 1;
+  const todayDate = now.getDate();
+
+  if (targetTok.month !== todayMonth || targetTok.day !== todayDate) {
+    return null;
+  }
+
+  if (targetTok.year !== null && targetTok.year !== todayYear) {
+    return null;
+  }
+
+  // If the trip specifies an explicit year on any day, verify this day aligns with today's year
+  const dayTokens = [];
+  (trip.days || []).forEach((d) => {
+    const tok = parseVacationDateToken(d?.shortDate) || parseVacationDateToken(d?.title);
+    if (tok) dayTokens.push({ ...tok, dayRef: d });
+  });
+
+  const todayMs = new Date(todayYear, todayMonth - 1, todayDate).getTime();
+  const explicitTok = dayTokens.find((t) => t.year !== null);
+  if (explicitTok) {
+    const resolved = buildChronologicalDates(dayTokens, explicitTok.year);
+    const matched = resolved.find((entry) => entry.dayRef?.id === day.id);
+    if (matched && matched.ms !== todayMs) {
+      return null;
+    }
+  }
+
+  const daysList = Array.isArray(trip.days) ? trip.days : [];
+  const totalDays = Math.max(1, daysList.length);
+  const dayIdx = daysList.findIndex((d) => d.id === day.id);
+  const dayNumber = dayIdx >= 0 ? dayIdx + 1 : 1;
+
+  return {
+    isActive: true,
+    dayNumber,
+    totalDays,
+    isFirstDay: dayNumber === 1,
+    isLastDay: dayNumber === totalDays,
+    location: day.location || '',
+    tripTitle: trip.meta?.title || 'Your Vacation'
+  };
 }
 
 function cleanupVacationCelebration() {
@@ -1111,7 +1164,7 @@ function launchVacationFireworks(status) {
         ? `Happy Vacation! · Day 1 of ${status.totalDays}`
         : status.isLastDay
           ? `Final Vacation Day · Day ${status.dayNumber} of ${status.totalDays}`
-          : `Vacation Mode · Day ${status.dayNumber} of ${status.totalDays}`)
+          : `Vacation Day ${status.dayNumber} of ${status.totalDays}`)
     : 'Happy Vacation Day!';
 
   const subline = status.location
@@ -1205,7 +1258,6 @@ function launchVacationFireworks(status) {
       }
     };
 
-    // Choreographed Launch Schedule (Opening Salvo → Rhythmic Bursts → Finale)
     const launchPlan = [
       { delay: 80, x: 0.28 },
       { delay: 240, x: 0.72 },
@@ -1230,7 +1282,6 @@ function launchVacationFireworks(status) {
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = 'lighter';
 
-      // Update & draw ascending rockets
       for (let i = rockets.length - 1; i >= 0; i--) {
         const r = rockets[i];
         r.trail.push({ x: r.x, y: r.y });
@@ -1261,7 +1312,6 @@ function launchVacationFireworks(status) {
         }
       }
 
-      // Update & draw burst sparkles
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x += p.vx;
@@ -1329,6 +1379,17 @@ export function checkAndCelebrateVacation({ resetTripGuard = false } = {}) {
   if (!status?.isActive) return false;
 
   celebratedTripIds.add(trip.id);
+  launchVacationFireworks(status);
+  return true;
+}
+
+/**
+ * Automatically Celebrate When Switching Destination Spotlight to Today's Matching Date
+ */
+export function celebrateIfSpotlightMatchesToday(day = appStore.state.days[appStore.activeCarouselIndex]) {
+  const status = getSpotlightTodayStatus(day, appStore.state);
+  if (!status?.isActive) return false;
+
   launchVacationFireworks(status);
   return true;
 }
@@ -3399,13 +3460,20 @@ export function renderForecastStrip() {
 
 export function setActiveCarouselIndex(nextIdx) {
   if (appStore.state.days.length === 0) return;
-  appStore.activeCarouselIndex = (nextIdx + appStore.state.days.length) % appStore.state.days.length;
-  updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex]);
+  const prevIdx = appStore.activeCarouselIndex;
+  const resolvedIdx = (nextIdx + appStore.state.days.length) % appStore.state.days.length;
+  appStore.activeCarouselIndex = resolvedIdx;
+  const activeDay = appStore.state.days[resolvedIdx];
+  updateBackdropForDay(activeDay);
   renderHero();
   renderForecastStrip();
   renderCarousel();
   plannerHooks.renderItinerary();
   syncLiveWeatherForActiveDay();
+
+  if (resolvedIdx !== prevIdx && activeDay) {
+    celebrateIfSpotlightMatchesToday(activeDay);
+  }
 }
 
 export function renderCarousel() {

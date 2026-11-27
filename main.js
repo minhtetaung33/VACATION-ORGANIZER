@@ -15,6 +15,7 @@ import {
   prefetchAllCardPhotos,
   refreshTripTravelRoutes,
   initCloudSync,
+  checkAndCelebrateVacation,
   extractPlainTextFromRichHtml,
   showToast,
   copyTextToClipboard,
@@ -283,6 +284,13 @@ function bindGlobalEvents() {
       refreshWeatherDayNightAuto();
     }
   });
+
+  // Re-trigger automatic vacation fireworks when restoring the page from browser back/forward cache
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      checkAndCelebrateVacation({ resetTripGuard: true });
+    }
+  });
 }
 
 /**
@@ -298,6 +306,7 @@ bindGlobalEvents();
 initRichNotesEditor();
 updateBackdropForDay(appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0]);
 renderAll();
+checkAndCelebrateVacation();
 prefetchAllDaysWeather();
 setInterval(refreshWeatherDayNightAuto, 60 * 1000);
 setInterval(syncLiveWeatherForActiveDay, 20 * 60 * 1000);

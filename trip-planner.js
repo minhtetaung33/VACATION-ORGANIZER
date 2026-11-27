@@ -676,7 +676,6 @@ export function sanitizeRichNotesHtml(rawHtml) {
       return;
     }
 
-    // Strip dangerous attributes & event handlers
     Array.from(node.attributes).forEach((attr) => {
       const name = attr.name.toLowerCase();
       if (name.startsWith('on')) {
@@ -921,6 +920,417 @@ export function getItemFinalCost(item) {
     return Number(item.final);
   }
   return null;
+}
+
+/**
+ * ============================================================================
+ * AUTOMATIC VACATION CELEBRATION & FIREWORKS ENGINE (Start Day → End Day)
+ * ============================================================================
+ */
+const VACATION_FIREWORK_PALETTE = [
+  '#fb923c', // Sunset Orange
+  '#38bdf8', // Electric Sky
+  '#fde047', // Warm Gold
+  '#34d399', // Emerald Mint
+  '#f472b6', // Rose Pink
+  '#a78bfa', // Cosmic Violet
+  '#f8fafc'  // Crisp Sparkle White
+];
+
+const celebratedTripIds = new Set();
+let activeCelebrationCleanup = null;
+
+function parseVacationDateToken(rawText) {
+  const text = String(rawText || '').trim();
+  if (!text) return null;
+
+  // 1. ISO date: 2026-11-27
+  const isoMatch = text.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { year, month, day };
+    }
+  }
+
+  // 2. Month name + day (+ optional year): Nov 27 or November 27, 2026
+  const monMatch = text.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?\b/i);
+  if (monMatch) {
+    const month = BOOKI_MONTH_MAP[monMatch[1].toLowerCase()];
+    const day = Number(monMatch[2]);
+    const year = monMatch[3] ? Number(monMatch[3]) : null;
+    if (month && day >= 1 && day <= 31) {
+      return { year, month, day };
+    }
+  }
+
+  // 3. Slash date: 11/27 or 11/27/2026
+  const slashMatch = text.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/);
+  if (slashMatch) {
+    const month = Number(slashMatch[1]);
+    const day = Number(slashMatch[2]);
+    let year = slashMatch[3] ? Number(slashMatch[3]) : null;
+    if (year !== null && year < 100) year += 2000;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return { year, month, day };
+    }
+  }
+
+  return null;
+}
+
+function buildChronologicalDates(parsedTokens, fallbackBaseYear) {
+  const dates = [];
+  let runningYear = fallbackBaseYear;
+  let prevMonth = null;
+  let prevDay = null;
+
+  parsedTokens.forEach((tok) => {
+    let yr = tok.year;
+    if (yr === null) {
+      if (prevMonth !== null && (tok.month < prevMonth || (tok.month === prevMonth && tok.day < prevDay))) {
+        runningYear += 1;
+      }
+      yr = runningYear;
+    } else {
+      runningYear = yr;
+    }
+    const dt = new Date(yr, tok.month - 1, tok.day);
+    if (!Number.isNaN(dt.getTime())) {
+      dates.push({
+        ms: dt.getTime(),
+        dayRef: tok.dayRef || null
+      });
+      prevMonth = tok.month;
+      prevDay = tok.day;
+    }
+  });
+
+  return dates;
+}
+
+export function getActiveVacationStatus(trip = appStore.state, now = new Date()) {
+  if (!trip || typeof trip !== 'object') return null;
+
+  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const msPerDay = 24 * 60 * 60 * 1000;
+
+  // Gather parsed date tokens from trip days first
+  const dayTokens = [];
+  (trip.days || []).forEach((d) => {
+    const tok = parseVacationDateToken(d?.shortDate) || parseVacationDateToken(d?.title);
+    if (tok) {
+      dayTokens.push({ ...tok, dayRef: d });
+    }
+  });
+
+  const evaluateWindow = (entries) => {
+    if (!entries || entries.length === 0) return null;
+    const sorted = [...entries].sort((a, b) => a.ms - b.ms);
+    const startMs = sorted[0].ms;
+    const endMs = sorted[sorted.length - 1].ms;
+
+    if (todayMs < startMs || todayMs > endMs) return null;
+
+    const dayNumber = Math.round((todayMs - startMs) / msPerDay) + 1;
+    const totalDays = Math.max(1, Math.round((endMs - startMs) / msPerDay) + 1);
+    const matchedEntry = sorted.find((e) => e.ms === todayMs) || sorted[Math.min(dayNumber - 1, sorted.length - 1)];
+
+    return {
+      isActive: true,
+      dayNumber,
+      totalDays,
+      isFirstDay: dayNumber === 1,
+      isLastDay: dayNumber === totalDays,
+      location: matchedEntry?.dayRef?.location || trip.days?.[0]?.location || '',
+      tripTitle: trip.meta?.title || 'Your Vacation'
+    };
+  };
+
+  if (dayTokens.length > 0) {
+    const hasExplicitYear = dayTokens.some((t) => t.year !== null);
+    if (hasExplicitYear) {
+      const explicitYear = dayTokens.find((t) => t.year !== null).year;
+      const result = evaluateWindow(buildChronologicalDates(dayTokens, explicitYear));
+      if (result) return result;
+    } else {
+      // Check current year first, then previous year (handles Dec 30 -> Jan 2 trips seamlessly)
+      const currentYrResult = evaluateWindow(buildChronologicalDates(dayTokens, now.getFullYear()));
+      if (currentYrResult) return currentYrResult;
+      const wrapYrResult = evaluateWindow(buildChronologicalDates(dayTokens, now.getFullYear() - 1));
+      if (wrapYrResult) return wrapYrResult;
+    }
+  }
+
+  // Fallback: Check active (non-cancelled) Booki reservation dates if days have no dates yet
+  const resEntries = [];
+  (trip.reservations || []).forEach((r) => {
+    if (r?.status === 'cancelled') return;
+    const startTok = parseVacationDateToken(r?.startDate);
+    const endTok = parseVacationDateToken(r?.endDate);
+    if (startTok && startTok.year) {
+      resEntries.push({ ms: new Date(startTok.year, startTok.month - 1, startTok.day).getTime(), dayRef: null });
+    }
+    if (endTok && endTok.year) {
+      resEntries.push({ ms: new Date(endTok.year, endTok.month - 1, endTok.day).getTime(), dayRef: null });
+    }
+  });
+
+  if (resEntries.length > 0) {
+    return evaluateWindow(resEntries);
+  }
+
+  return null;
+}
+
+function cleanupVacationCelebration() {
+  if (typeof activeCelebrationCleanup === 'function') {
+    const fn = activeCelebrationCleanup;
+    activeCelebrationCleanup = null;
+    fn();
+  }
+}
+
+function launchVacationFireworks(status) {
+  cleanupVacationCelebration();
+
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const timers = [];
+  let rafId = null;
+
+  // 1. Auto-Fading Frosted Celebration Banner (Non-blocking)
+  const banner = document.createElement('div');
+  banner.className = 'vacation-celebration-banner';
+  banner.setAttribute('role', 'status');
+  banner.setAttribute('aria-live', 'polite');
+
+  const headline = status.totalDays > 1
+    ? (status.isFirstDay
+        ? `Happy Vacation! · Day 1 of ${status.totalDays}`
+        : status.isLastDay
+          ? `Final Vacation Day · Day ${status.dayNumber} of ${status.totalDays}`
+          : `Vacation Mode · Day ${status.dayNumber} of ${status.totalDays}`)
+    : 'Happy Vacation Day!';
+
+  const subline = status.location
+    ? `Enjoy every moment in ${status.location}`
+    : `Enjoy ${status.tripTitle}`;
+
+  banner.innerHTML = `
+    <span class="vacation-celebration-sparkle">${ICONS.highlight}</span>
+    <div class="min-w-0 text-left">
+      <div class="text-xs sm:text-sm font-bold tracking-tight bg-gradient-to-r from-orange-200 via-white to-sky-200 bg-clip-text text-transparent truncate">
+        ${esc(headline)}
+      </div>
+      <div class="text-[11px] text-white/75 truncate">${esc(subline)}</div>
+    </div>
+  `;
+  document.body.appendChild(banner);
+
+  let canvas = null;
+  let onResize = null;
+
+  if (!prefersReducedMotion) {
+    // 2. Full-Screen Non-Blocking HTML5 Canvas Fireworks Show
+    canvas = document.createElement('canvas');
+    canvas.className = 'vacation-fireworks-canvas';
+    canvas.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d');
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    const resizeCanvas = () => {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resizeCanvas();
+    onResize = resizeCanvas;
+    window.addEventListener('resize', onResize);
+
+    const rockets = [];
+    const particles = [];
+
+    const spawnRocket = (xRatio = null) => {
+      const startX = xRatio !== null
+        ? width * xRatio
+        : width * (0.16 + Math.random() * 0.68);
+      const targetY = height * (0.14 + Math.random() * 0.32);
+      const color = VACATION_FIREWORK_PALETTE[Math.floor(Math.random() * VACATION_FIREWORK_PALETTE.length)];
+      const secondary = VACATION_FIREWORK_PALETTE[Math.floor(Math.random() * VACATION_FIREWORK_PALETTE.length)];
+
+      rockets.push({
+        x: startX,
+        y: height + 10,
+        vx: (Math.random() - 0.5) * 1.9,
+        vy: -(9.5 + Math.random() * 4.2),
+        targetY,
+        color,
+        secondary,
+        trail: []
+      });
+    };
+
+    const explodeRocket = (rocket) => {
+      const isRing = Math.random() < 0.35;
+      const count = isRing ? 38 : 48 + Math.floor(Math.random() * 18);
+
+      for (let i = 0; i < count; i++) {
+        const angle = isRing
+          ? (Math.PI * 2 * i) / count
+          : Math.random() * Math.PI * 2;
+        const speed = isRing
+          ? 3.2 + Math.random() * 1.1
+          : 1.4 + Math.random() * 5.2;
+
+        particles.push({
+          x: rocket.x,
+          y: rocket.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          color: i % 3 === 0 ? rocket.secondary : rocket.color,
+          alpha: 1,
+          decay: 0.012 + Math.random() * 0.011,
+          size: 1.8 + Math.random() * 2.2,
+          twinkle: Math.random() < 0.45
+        });
+      }
+    };
+
+    // Choreographed Launch Schedule (Opening Salvo → Rhythmic Bursts → Finale)
+    const launchPlan = [
+      { delay: 80, x: 0.28 },
+      { delay: 240, x: 0.72 },
+      { delay: 440, x: 0.50 },
+      { delay: 980, x: null },
+      { delay: 1480, x: null },
+      { delay: 2050, x: null },
+      { delay: 2620, x: null },
+      { delay: 3250, x: null },
+      { delay: 3850, x: 0.26 },
+      { delay: 4050, x: 0.52 },
+      { delay: 4220, x: 0.76 }
+    ];
+
+    launchPlan.forEach((item) => {
+      timers.push(setTimeout(() => spawnRocket(item.x), item.delay));
+    });
+
+    const tick = () => {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+      ctx.fillRect(0, 0, width, height);
+      ctx.globalCompositeOperation = 'lighter';
+
+      // Update & draw ascending rockets
+      for (let i = rockets.length - 1; i >= 0; i--) {
+        const r = rockets[i];
+        r.trail.push({ x: r.x, y: r.y });
+        if (r.trail.length > 7) r.trail.shift();
+
+        r.x += r.vx;
+        r.y += r.vy;
+        r.vy += 0.14;
+
+        ctx.beginPath();
+        for (let t = 0; t < r.trail.length; t++) {
+          const pt = r.trail[t];
+          if (t === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        if (r.y <= r.targetY || r.vy >= -0.8) {
+          explodeRocket(r);
+          rockets.splice(i, 1);
+        }
+      }
+
+      // Update & draw burst sparkles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.975;
+        p.vy = p.vy * 0.975 + 0.065;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0.02) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        const flicker = p.twinkle ? (0.6 + Math.random() * 0.4) : 1;
+        ctx.globalAlpha = Math.max(0, Math.min(1, p.alpha * flicker));
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Graceful Auto-Exit Timers
+  timers.push(setTimeout(() => {
+    banner.classList.add('is-leaving');
+  }, 5400));
+
+  timers.push(setTimeout(() => {
+    if (canvas) canvas.classList.add('is-fading');
+  }, 5900));
+
+  timers.push(setTimeout(() => {
+    cleanupVacationCelebration();
+  }, 6900));
+
+  activeCelebrationCleanup = () => {
+    timers.forEach((t) => clearTimeout(t));
+    if (rafId !== null) cancelAnimationFrame(rafId);
+    if (onResize) window.removeEventListener('resize', onResize);
+    canvas?.remove();
+    banner?.remove();
+  };
+}
+
+/**
+ * Automatically Celebrate Whenever Today Falls Within the Active Trip's Start-to-End Dates
+ */
+export function checkAndCelebrateVacation({ resetTripGuard = false } = {}) {
+  const trip = appStore.state;
+  if (!trip?.id) return false;
+
+  if (resetTripGuard) {
+    celebratedTripIds.delete(trip.id);
+  }
+
+  if (celebratedTripIds.has(trip.id)) return false;
+
+  const status = getActiveVacationStatus(trip);
+  if (!status?.isActive) return false;
+
+  celebratedTripIds.add(trip.id);
+  launchVacationFireworks(status);
+  return true;
 }
 
 /**
@@ -1484,7 +1894,8 @@ export const appStore = {
   vaultStatusFilter: 'all',
   currentBackdropUrl: '',
   justShiftedEventIds: new Set(),
-  justCompletedEventId: null
+  justCompletedEventId: null,
+  justMovedReservationId: null
 };
 
 export function syncActiveTripRef() {
@@ -1518,7 +1929,6 @@ export function normalizeTripObject(rawTrip, fallbackIdx = 0) {
     ? rawTrip.reservations.map((r) => normalizeReservationItem(r)).filter((r) => r.title)
     : (isDefaultThanksgiving ? base.reservations.map((r) => normalizeReservationItem(r)) : []);
 
-  // Automatically merge any legacy saved Official Links into Booki (zero duplicates)
   if (Array.isArray(rawTrip?.links) && rawTrip.links.length > 0) {
     const existingUrls = new Set(
       normalizedReservations.map((r) => normalizeUrlForCompare(r.bookingUrl)).filter(Boolean)
@@ -1576,7 +1986,6 @@ export function applyParsedPayload(parsed) {
     }
     return true;
   }
-  // Legacy v1 single-trip payload migration
   if (parsed.meta && Array.isArray(parsed.days)) {
     const migrated = normalizeTripObject({ ...parsed, id: 'trip-thanksgiving-default' }, 0);
     appStore.trips = [migrated];
@@ -1616,6 +2025,7 @@ export function switchToTrip(tripId, silent = false) {
   prefetchAllCardPhotos();
   refreshTripTravelRoutes();
   scheduleCloudSave();
+  checkAndCelebrateVacation({ resetTripGuard: true });
   if (!silent) showToast(`Switched to "${appStore.state.meta.title}"`);
 }
 
@@ -1928,6 +2338,7 @@ export async function initCloudSync() {
                 prefetchAllDaysWeather();
                 prefetchAllCardPhotos();
                 refreshTripTravelRoutes();
+                checkAndCelebrateVacation();
               }
               isApplyingRemote = false;
             } catch (parseErr) {
@@ -2049,7 +2460,7 @@ function loadWeatherCacheFromStorage() {
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return;
-    const maxRetainMs = 12 * 60 * 60 * 1000; // Keep up to 12 hrs for instant cold-refresh display
+    const maxRetainMs = 12 * 60 * 60 * 1000;
     const now = Date.now();
     Object.entries(parsed).forEach(([k, v]) => {
       if (v && v.fetchedAt && now - v.fetchedAt < maxRetainMs && Array.isArray(v.daily) && v.daily.length > 0) {
@@ -2239,7 +2650,6 @@ export async function searchWeatherLocations(rawQuery) {
     }))
     .filter(Boolean);
 
-  // Fallback to Photon geocoder for landmarks, ZIP codes, or small neighborhoods
   if (candidates.length < 3) {
     const photon = await fetchWeatherJson(
       `https://photon.komoot.io/api/?q=${encodeURIComponent(cleaned)}&limit=6`
@@ -2264,7 +2674,6 @@ export async function searchWeatherLocations(rawQuery) {
     });
   }
 
-  // Score candidates against user's query & optional state/region/country filter
   candidates.forEach((cand) => {
     let score = 0;
     const nameLow = cand.name.toLowerCase();
@@ -2294,7 +2703,6 @@ export async function searchWeatherLocations(rawQuery) {
     cand.score = score;
   });
 
-  // Sort best matches first & deduplicate co-located entries
   candidates.sort((a, b) => b.score - a.score);
 
   const unique = [];
@@ -2309,7 +2717,6 @@ export async function searchWeatherLocations(rawQuery) {
     if (unique.length >= 6) break;
   }
 
-  // If two distinct results still share the same short label, append region to keep labels unambiguous
   const labelCounts = new Map();
   unique.forEach((u) => {
     const k = u.label.toLowerCase();
@@ -2860,7 +3267,6 @@ export async function syncLiveWeatherForActiveDay() {
   const targetDayId = day.id;
   const targetLocKey = buildWeatherCacheKey(day.location, day.locationCoords);
 
-  // Immediately render cached weather (or clean fallback) so refresh never sits blank
   const cached = getCachedWeatherEntry(day.location, day.locationCoords);
   if (cached) {
     day.temp = cached.temp;
@@ -2871,7 +3277,6 @@ export async function syncLiveWeatherForActiveDay() {
     renderSevenDayWeather(day, null);
   }
 
-  // Fetch fresh live weather if cache is missing or older than TTL
   const isFresh = cached && Date.now() - cached.fetchedAt < WEATHER_CACHE_TTL_MS;
   if (isFresh) return;
 
@@ -2894,10 +3299,8 @@ export async function syncLiveWeatherForActiveDay() {
 }
 
 export async function prefetchAllDaysWeather() {
-  // Always load the visible active day immediately first
   syncLiveWeatherForActiveDay();
 
-  // Quietly prefetch remaining days in the background for instant day switching
   const activeDay = appStore.state.days[appStore.activeCarouselIndex] || appStore.state.days[0];
   const otherDays = appStore.state.days.filter((d) => d && d.id !== activeDay?.id);
   if (otherDays.length === 0) return;

@@ -80,6 +80,106 @@ body::-webkit-scrollbar,
 }
 
 /* ============================================================================
+   AUTOMATIC VACATION FIREWORKS CELEBRATION OVERLAY & BANNER
+   ============================================================================ */
+.vacation-fireworks-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 900ms ease-out;
+}
+
+.vacation-fireworks-canvas.is-fading {
+  opacity: 0;
+}
+
+.vacation-celebration-banner {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 61;
+  pointer-events: none;
+  width: min(calc(100vw - 2rem), 430px);
+  padding: 0.7rem 1.05rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(20, 24, 36, 0.88), rgba(14, 22, 38, 0.86));
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow:
+    0 20px 48px -12px rgba(0, 0, 0, 0.72),
+    0 0 28px -4px rgba(251, 146, 60, 0.35),
+    0 0 36px -6px rgba(56, 189, 248, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  transform: translate3d(-50%, 0, 0);
+  animation: vacationBannerIn 560ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.vacation-celebration-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 20%, rgba(255, 255, 255, 0.16) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.vacation-celebration-banner.is-leaving {
+  animation: vacationBannerOut 650ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+.vacation-celebration-sparkle {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.28), rgba(56, 189, 248, 0.28));
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fde047;
+  flex-shrink: 0;
+  animation: vacationSparklePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes vacationBannerIn {
+  0% {
+    opacity: 0;
+    transform: translate3d(-50%, -22px, 0) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1);
+  }
+}
+
+@keyframes vacationBannerOut {
+  0% {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-50%, -18px, 0) scale(0.95);
+  }
+}
+
+@keyframes vacationSparklePulse {
+  0%, 100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+  50%      { transform: scale(1.12) rotate(10deg); filter: brightness(1.25); }
+}
+
+/* ============================================================================
    FULL-CARD ANIMATED WEATHER ILLUSTRATION (DAY & NIGHT CYCLES)
    ============================================================================ */
 .weather-scene {
@@ -512,7 +612,7 @@ body::-webkit-scrollbar,
 }
 
 /* ============================================================================
-   MAPIFY INTERACTIVE TRAVEL MAP, DARK NEARBY POIS & PASTEL BASEMAP THEME
+   MAPIFY INTERACTIVE TRAVEL MAP, COMPASS NEARBY POIS & WAYFINDER THEME
    ============================================================================ */
 
 #mapifyCanvas {
@@ -521,7 +621,7 @@ body::-webkit-scrollbar,
   transition: background-color 320ms ease;
 }
 
-/* Basemap Light Pastel Surface & Crisp Editorial Polish */
+/* Wayfinder Light Pastel Surface & Crisp Editorial Polish */
 #mapifyCanvas.mapify-theme--basemap {
   background: #eaf2f8;
 }
@@ -530,7 +630,7 @@ body::-webkit-scrollbar,
   filter: saturate(1.16) contrast(1.03) brightness(1.01);
 }
 
-/* Dark & Street Frosted Leaflet Zoom & Attribution Controls */
+/* Compass & Street Frosted Leaflet Zoom & Attribution Controls */
 #mapifyCanvas .leaflet-control-zoom {
   border: 1px solid rgba(255, 255, 255, 0.18) !important;
   border-radius: 14px !important;
@@ -568,7 +668,7 @@ body::-webkit-scrollbar,
   color: rgba(125, 211, 252, 0.75) !important;
 }
 
-/* Clean Frosted Light Controls When Basemap Style Is Active */
+/* Clean Frosted Light Controls When Wayfinder Style Is Active */
 #mapifyCanvas.mapify-theme--basemap .leaflet-control-zoom {
   border: 1px solid rgba(15, 23, 42, 0.12) !important;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16) !important;
@@ -642,7 +742,7 @@ body::-webkit-scrollbar,
   background: rgba(12, 34, 28, 0.94);
 }
 
-/* Cute Editorial Pin Styling on Basemap Theme */
+/* Cute Editorial Pin Styling on Wayfinder Theme */
 .mapify-pin.is-basemap {
   background: linear-gradient(145deg, #ffffff 0%, #f8fafc 100%);
   color: #0f172a;
@@ -701,7 +801,7 @@ body::-webkit-scrollbar,
 }
 
 /* ============================================================================
-   DARK MODE: CUTE ANIMATED NEARBY PLACES (Restaurants, Attractions, Restrooms, Gas, Parking)
+   COMPASS MODE: CUTE ANIMATED NEARBY PLACES (Restaurants, Attractions, Restrooms, Gas, Parking)
    ============================================================================ */
 
 .mapify-poi-wrap {
@@ -799,7 +899,7 @@ body::-webkit-scrollbar,
   animation: mapifyPoiParkRock 3.2s ease-in-out infinite;
 }
 
-/* Dark Mode Nearby Filter Dock Overlay */
+/* Compass Mode Nearby Filter Dock Overlay */
 .mapify-poi-bar {
   background: rgba(13, 17, 27, 0.86);
   backdrop-filter: blur(18px);
@@ -821,7 +921,7 @@ body::-webkit-scrollbar,
 }
 
 /* ============================================================================
-   BASEMAP MODE: CUTE FLOATING ROUTE BADGES & PASTEL ZONE HALOS
+   WAYFINDER MODE: CUTE FLOATING ROUTE BADGES & PASTEL ZONE HALOS
    ============================================================================ */
 
 .mapify-basemap-halo-wrap {
@@ -1757,6 +1857,10 @@ body::-webkit-scrollbar,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .vacation-fireworks-canvas,
+  .vacation-celebration-banner,
+  .vacation-celebration-banner::before,
+  .vacation-celebration-sparkle,
   .weather-scene *,
   .weather-scene::before,
   .booki-badge-icon,
